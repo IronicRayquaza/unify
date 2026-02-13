@@ -64,40 +64,41 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         // Handle Repeat One (only on auto-advance)
         if (isAuto && repeatMode === 'one') {
-            // Force a re-mount to restart the track
             const track = currentTrack
             setCurrentTrack(null)
-            setTimeout(() => setCurrentTrack(track), 10)
+            setTimeout(() => {
+                setCurrentTrack(track)
+                setIsPlaying(true)
+            }, 50)
             return
         }
 
         let nextIdx = -1
 
         if (isShuffle) {
-            // Pick random index
             nextIdx = Math.floor(Math.random() * queue.length)
-            // Try not to pick same if possible
             if (queue.length > 1 && nextIdx === currentIndex) {
                 nextIdx = (nextIdx + 1) % queue.length
             }
         } else {
-            // Linear
             if (currentIndex < queue.length - 1) {
                 nextIdx = currentIndex + 1
             } else if (repeatMode === 'all') {
-                nextIdx = 0 // Loop back
+                nextIdx = 0
             }
         }
 
+        console.log('[PlayerContext] Next called:', { isAuto, nextIdx, currentIndex, queueLength: queue.length })
+
         if (nextIdx !== -1) {
+            const nextTrack = queue[nextIdx]
             setCurrentIndex(nextIdx)
-            setCurrentTrack(queue[nextIdx])
+            setCurrentTrack(nextTrack)
             setIsPlaying(true)
         } else {
-            // End of queue, stop
             setIsPlaying(false)
         }
-    }, [currentIndex, queue, isShuffle, repeatMode])
+    }, [currentIndex, queue, isShuffle, repeatMode, currentTrack])
 
     const prev = useCallback(() => {
         if (queue.length === 0) return

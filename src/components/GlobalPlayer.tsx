@@ -109,28 +109,50 @@ export function GlobalPlayer() {
         return () => window.removeEventListener('click', handler)
     }, [])
 
-    // ─── Handle Track Ending (YouTube & SoundCloud) ───
+    // ─── Handle Track Ending & Progress (YouTube) ───
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
-            // YouTube Handle
             if (event.origin === 'https://www.youtube.com' || event.origin === 'https://www.youtube-nocookie.com') {
                 try {
                     const data = JSON.parse(event.data)
-                    if (data.event === 'onStateChange' && data.info === 0) {
+
+                    // Detect Ended (Multiple API variations)
+                    const isEnded = (data.event === 'onStateChange' && (data.info === 0 || data.data === 0)) ||
+                        (data.event === 'infoDelivery' && data.info?.playerState === 0);
+
+                    if (isEnded) {
                         console.log('[GlobalPlayer] YouTube Track Ended')
                         next(true)
                     }
-                } catch (e) {
-                    // Not a JSON message or not from YT API
-                }
+
+                    // Capture Duration & Progress from info delivery
+                    if (data.event === 'infoDelivery' && data.info) {
+                        if (data.info.duration) setDuration(data.info.duration)
+                        if (data.info.currentTime && (data.info.duration || duration)) {
+                            setProgress(data.info.currentTime / (data.info.duration || duration))
+                        }
+                    }
+                } catch (e) { }
             }
         }
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [next])
+    }, [next, duration])
 
-    // ─── SoundCloud Widget API Listener ───
+    // ─── Progress Watchdog (Fallback skip) ───
+    useEffect(() => {
+        // If progress hits 99.5%, trigger next after a short delay to be safe
+        if (progress > 0.995 && isPlaying) {
+            const timer = setTimeout(() => {
+                console.log('[GlobalPlayer] Watchdog: Track ended (Progress 100%)')
+                next(true)
+            }, 1500)
+            return () => clearTimeout(timer)
+        }
+    }, [progress, isPlaying, next])
+
+    // ─── SoundCloud Widget API Listener & Control ───
     useEffect(() => {
         if (!isSoundCloud || !hasMounted) return
 
@@ -143,20 +165,69 @@ export function GlobalPlayer() {
             document.body.appendChild(script)
         }
 
-        const setupSCListener = () => {
+        const setupSCControl = () => {
             const iframe = document.querySelector('iframe[src*="soundcloud.com"]') as HTMLIFrameElement
             if (iframe && window.SC) {
-                const widget = window.SC.Widget(iframe)
-                widget.bind(window.SC.Widget.Events.FINISH, () => {
-                    console.log('[GlobalPlayer] SoundCloud Track Ended')
-                    next(true)
-                })
+                try {
+                    const widget = window.SC.Widget(iframe)
+                    if (widget) {
+                        // Volume Sync (SC uses 0-100)
+                        widget.setVolume(isMuted ? 0 : volume * 100)
+
+                        // Play/Pause Sync
+                        if (isPlaying) widget.play()
+                        else widget.pause()
+
+                        // Bind events only once by unbinding first or checking
+                        widget.unbind(window.SC.Widget.Events.FINISH)
+                        widget.bind(window.SC.Widget.Events.FINISH, () => {
+                            console.log('[GlobalPlayer] SoundCloud Track Ended')
+                            next(true)
+                        })
+
+                        widget.unbind(window.SC.Widget.Events.PLAY_PROGRESS)
+                        widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (data: any) => {
+                            const p = data.relativePosition
+                            if (p > 0) {
+                                setProgress(p)
+                                // Only update duration if it changes significantly
+                                const newDur = data.currentPosition / p / 1000
+                                if (Math.abs(newDur - duration) > 1) setDuration(newDur)
+                            }
+                        })
+                    }
+                } catch (e) {
+                    console.warn('[GlobalPlayer] SoundCloud widget not ready')
+                }
             }
         }
 
-        const timer = setTimeout(setupSCListener, 2000)
+        const timer = setTimeout(setupSCControl, 500)
         return () => clearTimeout(timer)
-    }, [isSoundCloud, currentTrack?.id, hasMounted, next])
+    }, [isSoundCloud, currentTrack?.id, hasMounted, next, isPlaying, volume, isMuted])
+
+    // ─── YouTube Remote Control Sync ───
+    useEffect(() => {
+        if (!isYoutube || !hasMounted || !playReady) return
+
+        const iframe = document.querySelector('iframe[src*="youtube.com"]') as HTMLIFrameElement
+        if (!iframe || !iframe.contentWindow) return
+
+        const command = isPlaying ? 'playVideo' : 'pauseVideo'
+        iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: command,
+            args: []
+        }), '*')
+
+        // Volume Sync (YouTube uses 0-100)
+        iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'setVolume',
+            args: [isMuted ? 0 : volume * 100]
+        }), '*')
+
+    }, [isYoutube, isPlaying, volume, isMuted, hasMounted, currentTrack?.id, playReady])
 
     // ─── Reset state when track changes ───
     useEffect(() => {
@@ -249,12 +320,19 @@ export function GlobalPlayer() {
                 if (!state) return
                 if (state.duration) setDuration(state.duration / 1000)
 
-                // Improved End-of-Track Detection for Spotify
-                const isFinished = state.position === 0 && state.paused && state.loading === false && state.track_window.previous_tracks.length > 0;
+                // Improved End-of-Track Detection
+                const isNearEnd = state.duration > 0 && (state.duration - state.position) < 1000 && state.paused
+                const isAtStart = state.position === 0 && state.paused && !state.loading
 
-                if (isFinished) {
-                    console.log('[GlobalPlayer] Spotify Track Ended')
-                    next(true)
+                const now = Date.now()
+                const lastEnd = (window as any)._lastSpotifyEnd || 0
+
+                if ((isAtStart || isNearEnd) && lastEnd < now - 3000) {
+                    if (isNearEnd || (isAtStart && state.track_window?.previous_tracks?.length > 0)) {
+                        (window as any)._lastSpotifyEnd = now
+                        console.log('[GlobalPlayer] Spotify Auto-Advance Triggered', { isNearEnd, isAtStart })
+                        next(true)
+                    }
                 }
             })
 
@@ -272,12 +350,13 @@ export function GlobalPlayer() {
 
     // Sync Play/Pause with Spotify SDK
     useEffect(() => {
-        if (isSpotify && spotifyPlayer && isSpotifyReady) {
-            if (isPlaying) {
-                spotifyPlayer.resume().catch((e: any) => console.error('Spotify Resume Error:', e))
-            } else {
-                spotifyPlayer.pause().catch((e: any) => console.error('Spotify Pause Error:', e))
-            }
+        if (!spotifyPlayer || !isSpotifyReady) return
+
+        if (isSpotify && isPlaying) {
+            spotifyPlayer.resume().catch((e: any) => console.error('Spotify Resume Error:', e))
+        } else {
+            // Pause if not playing OR if we've switched to a different platform
+            spotifyPlayer.pause().catch((e: any) => console.error('Spotify Pause Error:', e))
         }
     }, [isPlaying, isSpotify, spotifyPlayer, isSpotifyReady])
 
@@ -485,6 +564,21 @@ export function GlobalPlayer() {
                                     setProgress(val[0])
                                     if (isSpotify && spotifyPlayer && typeof spotifyPlayer.seek === 'function') {
                                         spotifyPlayer.seek(val[0] * duration * 1000)
+                                    } else if (isYoutube) {
+                                        const iframe = document.querySelector('iframe[src*="youtube.com"]') as HTMLIFrameElement
+                                        if (iframe?.contentWindow) {
+                                            iframe.contentWindow.postMessage(JSON.stringify({
+                                                event: 'command',
+                                                func: 'seekTo',
+                                                args: [val[0] * duration, true]
+                                            }), '*')
+                                        }
+                                    } else if (isSoundCloud && window.SC) {
+                                        const iframe = document.querySelector('iframe[src*="soundcloud.com"]') as HTMLIFrameElement
+                                        if (iframe) {
+                                            const widget = window.SC.Widget(iframe)
+                                            widget?.seekTo(val[0] * duration * 1000)
+                                        }
                                     }
                                 }}
                             >

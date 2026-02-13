@@ -108,13 +108,13 @@ export default function Home() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col relative z-10 min-w-0">
+      <div className="flex-1 h-screen flex flex-col relative z-10 min-w-0 overflow-hidden">
         <Navbar
           playlist={activePlaylist}
           onRename={(name) => activePlaylist && renamePlaylist(activePlaylist.id, name)}
         />
 
-        <main className="flex-1 px-8 py-8 max-w-3xl w-full mx-auto">
+        <main className="flex-1 overflow-y-auto px-8 py-8 pb-32 max-w-5xl w-full mx-auto scrollbar-thin">
           {activePlaylist ? (
             <PlaylistView
               playlist={activePlaylist}

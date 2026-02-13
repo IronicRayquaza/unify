@@ -65,7 +65,7 @@ export function Sidebar({ playlists, activeId, onSelect, onCreate, onDelete, onE
       </div>
 
       {/* Playlists */}
-      <div className="flex-1 overflow-y-auto py-3">
+      <div className="flex-1 overflow-y-auto py-3 pb-32 scrollbar-thin">
         <div className="px-4 mb-2 font-mono-custom text-[10px] tracking-[2px] uppercase text-muted/60">
           Your Playlists
         </div>

@@ -4,8 +4,9 @@
 import { useState, useEffect } from 'react'
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
-// Using 127.0.0.1 because 'localhost' is deprecated/blocked by Spotify for new apps.
-const REDIRECT_URI = 'http://127.0.0.1:3000/callback'
+const REDIRECT_URI = typeof window !== 'undefined'
+    ? `${window.location.origin}/callback`
+    : 'http://localhost:3000/callback'
 const SCOPES = [
     'streaming',
     'user-read-email',

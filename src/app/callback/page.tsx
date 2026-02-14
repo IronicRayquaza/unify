@@ -7,7 +7,9 @@ import { useRouter } from 'next/navigation'
 // Need to import these to access env vars or define them inside if easier
 const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
 // REDIRECT_URI must match exactly what was sent in the login step
-const REDIRECT_URI = 'http://127.0.0.1:3000/callback'
+const REDIRECT_URI = typeof window !== 'undefined'
+    ? `${window.location.origin}/callback`
+    : 'http://localhost:3000/callback'
 
 export default function CallbackPage() {
     const router = useRouter()
@@ -65,7 +67,7 @@ export default function CallbackPage() {
                         }
 
                         setStatus('Success! Redirecting...')
-                        setTimeout(() => window.location.href = '/', 500)
+                        setTimeout(() => window.location.href = '/dashboard', 500)
                     } else {
                         throw new Error('No access token in response')
                     }
@@ -84,7 +86,7 @@ export default function CallbackPage() {
                 const token = params.get('access_token')
                 if (token) {
                     localStorage.setItem('spotify_access_token', token)
-                    window.location.href = '/'
+                    window.location.href = '/dashboard'
                     return
                 }
             }

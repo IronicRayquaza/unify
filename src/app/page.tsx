@@ -1,6 +1,32 @@
+'use client'
+
+import { useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth-context'
 
 export default function LandingPage() {
+  const { user, loading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/dashboard')
+    }
+  }, [user, loading, router])
+
+  // If loading or already logged in, show a minimal version or nothing to prevent flicker
+  if (loading || user) {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center">
+        <div className="font-display font-black text-4xl tracking-tighter animate-pulse"
+          style={{ background: 'linear-gradient(135deg, #c8ff00, #ff6b35)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          UNIFY
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-bg flex flex-col relative overflow-hidden">
       {/* Background Effects */}
@@ -9,7 +35,7 @@ export default function LandingPage() {
         <div className="absolute top-0 left-1/4 w-[800px] h-[800px] rounded-full animate-bgPulse"
           style={{ background: 'radial-gradient(circle, rgba(200,255,0,0.03) 0%, transparent 70%)' }} />
         <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(255,107,53,0.03) 0%, transparent 70%)', animationDelay: '4s' }} />
+          style={{ background: 'radial-gradient(circle, rgba(255,107,53,0.04) 0%, transparent 70%)', animationDelay: '4s' }} />
       </div>
 
       {/* Navbar */}

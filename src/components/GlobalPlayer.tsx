@@ -42,6 +42,7 @@ export function GlobalPlayer() {
     const isSoundCloud = currentTrack?.platform === 'soundcloud'
     const isSpotify = currentTrack?.platform === 'spotify'
     const isApple = currentTrack?.platform === 'apple'
+    const isLocal = currentTrack?.platform === 'local'
     const isEmbedPlatform = isYoutube || isSoundCloud || isApple
 
     const [progress, setProgress] = useState(0)
@@ -91,6 +92,7 @@ export function GlobalPlayer() {
 
     // Custom Audio Player State
     const playerRef = useRef<any>(null)
+    const localAudioRef = useRef<HTMLAudioElement>(null)
 
     // Spotify SDK State
     const [spotifyPlayer, setSpotifyPlayer] = useState<any>(null)
@@ -109,27 +111,32 @@ export function GlobalPlayer() {
         return () => window.removeEventListener('click', handler)
     }, [])
 
-    // ─── Handle Track Ending & Progress (YouTube) ───
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
-            if (event.origin === 'https://www.youtube.com' || event.origin === 'https://www.youtube-nocookie.com') {
+            // Support both standard and nocookie origins
+            if (event.origin.includes('youtube.com') || event.origin.includes('youtube-nocookie.com')) {
                 try {
-                    const data = JSON.parse(event.data)
+                    const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
 
-                    // Detect Ended (Multiple API variations)
-                    const isEnded = (data.event === 'onStateChange' && (data.info === 0 || data.data === 0)) ||
-                        (data.event === 'infoDelivery' && data.info?.playerState === 0);
+                    // Log for debugging (filtered to state/info)
+                    // if (data.event === 'onStateChange' || data.event === 'infoDelivery') console.log('[YT Message]', data)
+
+                    // Robust Ended detection
+                    const state = data.info?.playerState ?? data.data ?? data.info
+                    const isEnded = (data.event === 'onStateChange' && state === 0) ||
+                        (data.event === 'infoDelivery' && data.info?.playerState === 0)
 
                     if (isEnded) {
-                        console.log('[GlobalPlayer] YouTube Track Ended')
+                        console.log('[GlobalPlayer] YouTube Track Ended (via Message)')
                         next(true)
                     }
 
-                    // Capture Duration & Progress from info delivery
+                    // Capture Duration & Progress
                     if (data.event === 'infoDelivery' && data.info) {
                         if (data.info.duration) setDuration(data.info.duration)
-                        if (data.info.currentTime && (data.info.duration || duration)) {
-                            setProgress(data.info.currentTime / (data.info.duration || duration))
+                        if (data.info.currentTime) {
+                            const dur = data.info.duration || duration
+                            if (dur > 0) setProgress(data.info.currentTime / dur)
                         }
                     }
                 } catch (e) { }
@@ -142,15 +149,28 @@ export function GlobalPlayer() {
 
     // ─── Progress Watchdog (Fallback skip) ───
     useEffect(() => {
-        // If progress hits 99.5%, trigger next after a short delay to be safe
-        if (progress > 0.995 && isPlaying) {
+        if (!isPlaying) return
+
+        // Fallback A: Exact 100% or very near end
+        if (progress > 0.992) {
             const timer = setTimeout(() => {
-                console.log('[GlobalPlayer] Watchdog: Track ended (Progress 100%)')
+                console.log('[GlobalPlayer] Watchdog: Track ended (Near 100%)')
                 next(true)
-            }, 1500)
+            }, 1000)
             return () => clearTimeout(timer)
         }
-    }, [progress, isPlaying, next])
+
+        // Fallback B: Periodic state request for YouTube
+        if (isYoutube) {
+            const interval = setInterval(() => {
+                const iframe = document.querySelector('iframe[src*="youtube.com"]') as HTMLIFrameElement
+                if (iframe?.contentWindow) {
+                    iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*')
+                }
+            }, 3000)
+            return () => clearInterval(interval)
+        }
+    }, [progress, isPlaying, next, isYoutube])
 
     // ─── SoundCloud Widget API Listener & Control ───
     useEffect(() => {
@@ -393,6 +413,23 @@ export function GlobalPlayer() {
         }
     }, [currentTrack?.url, isSpotify, isSpotifyReady, spotifyDeviceId])
 
+    // ─── Local Audio Control ───
+    useEffect(() => {
+        if (!isLocal || !localAudioRef.current) return
+
+        const audio = localAudioRef.current
+        audio.volume = isMuted ? 0 : volume
+
+        if (isPlaying) {
+            audio.play().catch(e => {
+                console.warn('[GlobalPlayer] Local play failed:', e)
+                if (e.name === 'NotAllowedError') setPlayerError('Click play to enable audio')
+            })
+        } else {
+            audio.pause()
+        }
+    }, [isLocal, isPlaying, volume, isMuted, currentTrack?.url])
+
     const { login: spotifyLogin } = useSpotifyAuth()
 
     if (!user || !currentTrack) return null
@@ -579,6 +616,8 @@ export function GlobalPlayer() {
                                             const widget = window.SC.Widget(iframe)
                                             widget?.seekTo(val[0] * duration * 1000)
                                         }
+                                    } else if (isLocal && localAudioRef.current) {
+                                        localAudioRef.current.currentTime = val[0] * duration
                                     }
                                 }}
                             >
@@ -614,6 +653,29 @@ export function GlobalPlayer() {
                     </div>
                 </div>
             </div>
+
+            {/* Local Audio Element */}
+            {isLocal && (
+                <audio
+                    ref={localAudioRef}
+                    src={currentTrack.url}
+                    onEnded={() => next(true)}
+                    onTimeUpdate={(e) => {
+                        const audio = e.currentTarget
+                        setProgress(audio.currentTime / audio.duration)
+                        setDuration(audio.duration)
+                    }}
+                    onLoadStart={() => setIsBuffering(true)}
+                    onCanPlay={() => {
+                        setIsBuffering(false)
+                        setPlayReady(true)
+                    }}
+                    onError={(e) => {
+                        console.error('[GlobalPlayer] Local Audio Error:', e)
+                        setPlayerError('Failed to load local audio file.')
+                    }}
+                />
+            )}
         </>
     )
 }

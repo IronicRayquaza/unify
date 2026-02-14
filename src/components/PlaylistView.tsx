@@ -39,6 +39,7 @@ const FILTERS: { label: string; value: FilterType }[] = [
   { label: 'YouTube', value: 'youtube' },
   { label: 'SoundCloud', value: 'soundcloud' },
   { label: 'Apple Music', value: 'apple' },
+  { label: 'Local Files', value: 'local' },
 ]
 
 import { usePlayer } from '@/lib/player-context'
@@ -68,10 +69,7 @@ export function PlaylistView({ playlist, onAddTrack, onRemoveTrack, onUpdateTrac
     ? playlist.tracks
     : playlist.tracks.filter(t => t.platform === filter)
 
-  const availableFilters = FILTERS.filter(f => {
-    if (f.value === 'all') return true
-    return playlist.tracks.some(t => t.platform === f.value)
-  })
+  const availableFilters = FILTERS
 
   return (
     <div className="flex-1 min-h-screen">

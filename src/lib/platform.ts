@@ -15,6 +15,7 @@ export function platformDisplayName(platform: Platform): string {
     youtube: 'YouTube',
     soundcloud: 'SoundCloud',
     apple: 'Apple Music',
+    local: 'Local File',
     unknown: 'Unknown',
   }
   return names[platform]
@@ -26,6 +27,7 @@ export function platformColor(platform: Platform): string {
     youtube: '#FF0000',
     soundcloud: '#ff5500',
     apple: '#fc3c44',
+    local: '#818cf8',
     unknown: '#6b6b88',
   }
   return colors[platform]
@@ -37,6 +39,7 @@ export function platformIcon(platform: Platform): string {
     youtube: '▶',
     soundcloud: '☁',
     apple: '♫',
+    local: '📁',
     unknown: '◉',
   }
   return icons[platform]
@@ -48,6 +51,7 @@ export function platformBgClass(platform: Platform): string {
     youtube: 'bg-youtube/15 text-youtube',
     soundcloud: 'bg-soundcloud/15 text-soundcloud',
     apple: 'bg-apple/15 text-apple',
+    local: 'bg-indigo-400/15 text-indigo-400',
     unknown: 'bg-muted/15 text-muted',
   }
   return classes[platform]
@@ -59,6 +63,7 @@ export function platformTagClass(platform: Platform): string {
     youtube: 'bg-youtube/10 text-youtube',
     soundcloud: 'bg-soundcloud/10 text-soundcloud',
     apple: 'bg-apple/10 text-apple',
+    local: 'bg-indigo-400/10 text-indigo-400',
     unknown: 'bg-muted/10 text-muted',
   }
   return classes[platform]

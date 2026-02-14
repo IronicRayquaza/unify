@@ -40,4 +40,7 @@ html, body {
 @layer utilities {
   .font-display { font-family: 'Syne', sans-serif; }
   .font-mono-custom { font-family: 'DM Mono', monospace; }
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 }

@@ -1,4 +1,4 @@
-export type Platform = 'spotify' | 'youtube' | 'soundcloud' | 'apple' | 'unknown'
+export type Platform = 'spotify' | 'youtube' | 'soundcloud' | 'apple' | 'local' | 'unknown'
 
 export interface Track {
   id: string

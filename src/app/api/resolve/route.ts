@@ -33,11 +33,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. YouTube: use oEmbed
-    if (platform === 'youtube') {
+    // 1. YouTube & YouTube Music: use oEmbed
+    if (platform === 'youtube' || platform === 'ytmusic') {
       try {
+        // Normalize for oEmbed compatibility
+        const embedUrl = resolvedUrl.replace('music.youtube.com', 'www.youtube.com')
         const oembed = await fetch(
-          `https://www.youtube.com/oembed?url=${encodeURIComponent(resolvedUrl)}&format=json`,
+          `https://www.youtube.com/oembed?url=${encodeURIComponent(embedUrl)}&format=json`,
           { next: { revalidate: 3600 } }
         )
         if (oembed.ok) {

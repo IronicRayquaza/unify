@@ -42,7 +42,7 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
     }
 
     // 1. YouTube & SoundCloud (Use Native Iframes)
-    if (track.platform === 'youtube') {
+    if (track.platform === 'youtube' || track.platform === 'ytmusic') {
         const id = extractVideoId(track.url)
         return (
             <div className="flex flex-col gap-2">
@@ -78,6 +78,7 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
             />
         )
     }
+
 
     // 2. Forced Full Audio Mode (Resolved from YouTube)
     if (forceFullAudio && resolvedUrl) {

@@ -16,8 +16,9 @@ interface Props {
 }
 
 const PLATFORM_HINTS: { platform: Platform; color: string }[] = [
-  { platform: 'spotify', color: '#1DB954' },
   { platform: 'youtube', color: '#FF0000' },
+  { platform: 'ytmusic', color: '#FF0000' },
+  { platform: 'spotify', color: '#1DB954' },
   { platform: 'soundcloud', color: '#ff5500' },
   { platform: 'apple', color: '#fc3c44' },
   { platform: 'local', color: '#818cf8' },
@@ -182,26 +183,53 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
     }
   }
 
-  const handleAdd = async (trackUrl: string) => {
-    const trimmed = trackUrl.trim()
-    if (existingUrls.includes(trimmed)) return showFeedback('Track already in playlist!', 'error')
+  const handleAdd = async (resultOrUrl: string | ResolveResponse) => {
+    let trackUrl = typeof resultOrUrl === 'string' ? resultOrUrl : resultOrUrl.url!
+    const isSnippet = typeof resultOrUrl === 'object' && resultOrUrl.isSnippet
+
+    if (existingUrls.includes(trackUrl)) return showFeedback('Track already in playlist!', 'error')
 
     setLoading(true)
     try {
-      const res = await fetch(`/api/resolve?url=${encodeURIComponent(trimmed)}`)
-      if (!res.ok) {
-        throw new Error(`Server responded with ${res.status}`)
+      let finalTrackData: any = null
+
+      // IF SNIPPET -> FIND FULL VERSION ON YOUTUBE
+      if (isSnippet) {
+        showFeedback('Getting full version from YouTube...', 'success')
+        const query = `${(resultOrUrl as ResolveResponse).artist} - ${(resultOrUrl as ResolveResponse).title}`
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
+        if (res.ok) {
+          const data = await res.json()
+          const fullTrack = data.results?.find((r: any) => r.platform === 'youtube' || r.platform === 'ytmusic')
+          if (fullTrack) {
+            trackUrl = fullTrack.url
+            finalTrackData = {
+              ...fullTrack,
+              // Keep SC metadata if preferred, or use YT
+              title: (resultOrUrl as ResolveResponse).title,
+              artist: (resultOrUrl as ResolveResponse).artist,
+            }
+          }
+        }
       }
-      const data = await res.json()
+
+      // If not snippet or fallback failed, resolve normally
+      if (!finalTrackData) {
+        const res = await fetch(`/api/resolve?url=${encodeURIComponent(trackUrl)}`)
+        if (!res.ok) {
+          throw new Error(`Server responded with ${res.status}`)
+        }
+        finalTrackData = await res.json()
+      }
 
       const track: Track = {
         id: uuidv4(),
-        url: data.url || trimmed,
-        platform: data.platform,
-        title: data.title,
-        artist: data.artist,
-        thumbnail: data.thumbnail,
-        duration: data.duration,
+        url: finalTrackData.url || trackUrl,
+        platform: finalTrackData.platform,
+        title: finalTrackData.title,
+        artist: finalTrackData.artist,
+        thumbnail: finalTrackData.thumbnail,
+        duration: finalTrackData.duration,
         addedAt: new Date().toISOString(),
       }
 
@@ -345,7 +373,7 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
               .map((result, idx) => (
                 <div
                   key={idx}
-                  onClick={() => handleAdd(result.url!)}
+                  onClick={() => handleAdd(result)}
                   className="group flex items-center gap-3 p-2 rounded-xl bg-bg border border-border hover:border-accent/50 hover:bg-surface2 transition-all cursor-pointer"
                 >
                   {result.thumbnail ? (
@@ -356,8 +384,18 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold truncate text-text group-hover:text-accent transition-colors">{result.title}</div>
-                    <div className="text-[11px] text-muted truncate">{result.artist}</div>
+                    <div className="text-sm font-bold truncate text-text group-hover:text-accent transition-colors">
+                      {result.title}
+                      {result.isSnippet && (
+                        <span className="ml-2 text-[8px] bg-red-500/10 text-red-400 border border-red-500/20 px-1 py-0.5 rounded uppercase font-black tracking-tighter">GO+ Preview (30s)</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-[11px] text-muted truncate max-w-[150px]">{result.artist}</div>
+                      {result.duration && (
+                        <div className="text-[10px] text-muted/50 font-mono-custom">· {result.duration}</div>
+                      )}
+                    </div>
                   </div>
                   <div className="px-2 py-1 rounded-md text-[9px] font-mono-custom uppercase tracking-tighter"
                     style={{

@@ -1,4 +1,4 @@
-export type Platform = 'spotify' | 'youtube' | 'soundcloud' | 'apple' | 'local' | 'unknown'
+export type Platform = 'spotify' | 'youtube' | 'ytmusic' | 'soundcloud' | 'apple' | 'local' | 'unknown'
 
 export interface Track {
   id: string
@@ -8,6 +8,7 @@ export interface Track {
   artist: string
   thumbnail?: string
   duration?: string
+  embedUrl?: string
   addedAt: string
 }
 
@@ -31,4 +32,6 @@ export interface ResolveResponse {
   duration?: string
   platform: Platform
   url?: string
+  embedUrl?: string
+  isSnippet?: boolean
 }

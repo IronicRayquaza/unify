@@ -1,14 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { usePlayer } from '@/lib/player-context'
 import Image from 'next/image'
 import {
     Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
-    Loader2, Music2, Shuffle, Repeat, Repeat1, Maximize2
+    Loader2, Music2, Shuffle, Repeat, Repeat1, ExternalLink,
 } from 'lucide-react'
 import * as Slider from '@radix-ui/react-slider'
-import { extractSpotifyId, extractVideoId } from '@/lib/platform'
+import { extractSpotifyId, extractVideoId, platformDisplayName } from '@/lib/platform'
 import { useSpotifyAuth } from '@/lib/spotify-auth'
 import { useAuth } from '@/lib/auth-context'
 
@@ -19,6 +19,41 @@ function formatTime(seconds: number) {
     const min = Math.floor(seconds / 60)
     const sec = Math.floor(seconds % 60)
     return `${min}:${sec < 10 ? '0' : ''}${sec}`
+}
+
+// ─────────────────────────────────────────────
+// FIX 1: Build YouTube embed URL correctly
+// origin must NOT be URL-encoded or YouTube rejects the embed
+// ─────────────────────────────────────────────
+function buildYouTubeEmbedUrl(videoId: string): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const params = new URLSearchParams({
+        autoplay: '1',
+        rel: '0',
+        modestbranding: '1',
+        enablejsapi: '1',
+        origin,
+        widget_referrer: origin,
+        playsinline: '1',
+        hl: 'en',
+    })
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
+}
+
+// ─────────────────────────────────────────────
+// FIX 2: YouTube error code → message
+// ─────────────────────────────────────────────
+function getYouTubeErrorMessage(code: any): string {
+    const c = (code !== undefined && code !== null) ? Number(code) : NaN
+    if (isNaN(c)) return 'YouTube playback error. Try refreshing.'
+    switch (c) {
+        case 2: return 'Invalid link or video ID.'
+        case 5: return 'HTML5 Player error.'
+        case 100: return 'Track removed or private.'
+        case 101:
+        case 150: return 'Label restricted embedding. Use the Search tab for the official video.'
+        default: return `YouTube error code ${c}.`
+    }
 }
 
 declare global {
@@ -37,8 +72,8 @@ export function GlobalPlayer() {
         setVolume, toggleMute, toggleShuffle, toggleRepeat
     } = usePlayer()
 
-    // Platform Helpers
-    const isYoutube = currentTrack?.platform === 'youtube'
+    const isYoutube = currentTrack?.platform === 'youtube' || currentTrack?.platform === 'ytmusic'
+    const isYoutubeMusic = currentTrack?.platform === 'ytmusic'
     const isSoundCloud = currentTrack?.platform === 'soundcloud'
     const isSpotify = currentTrack?.platform === 'spotify'
     const isApple = currentTrack?.platform === 'apple'
@@ -54,125 +89,179 @@ export function GlobalPlayer() {
     const [showVideo, setShowVideo] = useState(true)
     const [hasMounted, setHasMounted] = useState(false)
 
-    useEffect(() => {
-        setHasMounted(true)
-    }, [])
-
-    // Hidden container styles (default) vs Popup styles
-    const videoContainerStyle: React.CSSProperties = {
-        position: 'fixed',
-        bottom: '100px',
-        left: '24px',
-        width: '400px', // Slightly larger
-        height: '225px', // 16:9 ratio
-        zIndex: 100,
-        borderRadius: '12px',
-        overflow: 'hidden',
-        boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.5)',
-        border: '1px solid rgba(255, 255, 255, 0.2)',
-        backgroundColor: '#000',
-        transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        display: isEmbedPlatform ? 'block' : 'none',
-        opacity: showVideo && isEmbedPlatform ? 1 : 0,
-        pointerEvents: showVideo && isEmbedPlatform ? 'auto' : 'none',
-        transform: showVideo && isEmbedPlatform ? 'translateY(0)' : 'translateY(20px)',
-    }
-
-    // YouTube specific: Force playReady to true after 2s if it's still false 
-    // This solves cases where onReady never fires but the player is actually loaded.
-    useEffect(() => {
-        if (isYoutube && isPlaying && !playReady) {
-            const timer = setTimeout(() => {
-                console.log('[GlobalPlayer] YouTube playReady fallback triggered')
-                setPlayReady(true)
-            }, 2000)
-            return () => clearTimeout(timer)
-        }
-    }, [isYoutube, isPlaying, playReady])
-
-    // Custom Audio Player State
-    const playerRef = useRef<any>(null)
     const localAudioRef = useRef<HTMLAudioElement>(null)
 
-    // Spotify SDK State
-    const [spotifyPlayer, setSpotifyPlayer] = useState<any>(null)
-    const [spotifyDeviceId, setSpotifyDeviceId] = useState<string | null>(null)
-    const [isSpotifyReady, setIsSpotifyReady] = useState(false)
-    const [spotifyError, setSpotifyError] = useState<string | null>(null)
-
-    // ─── Mark user interaction (needed to unlock autoplay) ───
+    useEffect(() => { setHasMounted(true) }, [])
+    useEffect(() => { if (isPlaying) setHasUserInteracted(true) }, [isPlaying])
     useEffect(() => {
-        if (isPlaying) setHasUserInteracted(true)
-    }, [isPlaying])
-
-    useEffect(() => {
-        const handler = () => setHasUserInteracted(true)
-        window.addEventListener('click', handler)
-        return () => window.removeEventListener('click', handler)
+        const h = () => setHasUserInteracted(true)
+        window.addEventListener('click', h, { once: true })
+        return () => window.removeEventListener('click', h)
     }, [])
 
+    // ─── Reset on track change ───
     useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            // Support both standard and nocookie origins
-            if (event.origin.includes('youtube.com') || event.origin.includes('youtube-nocookie.com')) {
-                try {
-                    const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+        setProgress(0)
+        setDuration(0)
+        setPlayReady(false)
+        setIsBuffering(false)
+        setPlayerError(null)
+        if (isEmbedPlatform) setShowVideo(true)
+    }, [currentTrack?.url])
 
-                    // Log for debugging (filtered to state/info)
-                    // if (data.event === 'onStateChange' || data.event === 'infoDelivery') console.log('[YT Message]', data)
+    // ─────────────────────────────────────────────
+    // FIX 3: YouTube postMessage listener
+    // Now catches onError events — previously missing entirely
+    // ─────────────────────────────────────────────
+    const durationRef = useRef(0)
+    const progressRef = useRef(0)
+    const isPlayingRef = useRef(isPlaying)
+    useEffect(() => { isPlayingRef.current = isPlaying }, [isPlaying])
+    useEffect(() => { progressRef.current = progress }, [progress])
 
-                    // Robust Ended detection
-                    const state = data.info?.playerState ?? data.data ?? data.info
-                    const isEnded = (data.event === 'onStateChange' && state === 0) ||
-                        (data.event === 'infoDelivery' && data.info?.playerState === 0)
+    useEffect(() => {
+        if (!isYoutube) return
 
-                    if (isEnded) {
-                        console.log('[GlobalPlayer] YouTube Track Ended (via Message)')
+        const handler = (event: MessageEvent) => {
+            if (
+                !event.origin.includes('youtube.com') &&
+                !event.origin.includes('youtube-nocookie.com')
+            ) return
+
+            let data: any
+            try {
+                data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+            } catch { return }
+
+            // State change: 0=ended, 1=playing, 2=paused, 3=buffering
+            if (data.event === 'onStateChange' || (data.event === 'infoDelivery' && data.info?.playerState !== undefined)) {
+                const state = (data.event === 'onStateChange' ? data.data : data.info.playerState) as number
+                if (state === 0) {
+                    console.log('[GlobalPlayer] YouTube Ended detected')
+                    next(true)
+                } else if (state === 1) {
+                    setIsBuffering(false)
+                    setPlayerError(null)
+                    if (!isPlayingRef.current) resume()
+                } else if (state === 2) {
+                    // Only pause if we aren't at the very end (prevents race conditions with 'ended')
+                    if (isPlayingRef.current && progressRef.current < 0.99) {
+                        pause()
+                    } else if (progressRef.current >= 0.99) {
+                        console.log('[GlobalPlayer] YT paused at end, forcing next...')
                         next(true)
                     }
+                } else if (state === 3) {
+                    setIsBuffering(true)
+                }
+            }
 
-                    // Capture Duration & Progress
-                    if (data.event === 'infoDelivery' && data.info) {
-                        if (data.info.duration) setDuration(data.info.duration)
-                        if (data.info.currentTime) {
-                            const dur = data.info.duration || duration
-                            if (dur > 0) setProgress(data.info.currentTime / dur)
-                        }
+            // ── onError: handles blocked embeddings ──
+            if (data.event === 'onError') {
+                const code = data.data ?? data.info?.code ?? data.info?.error ?? data.error ?? (Array.isArray(data.args) ? data.args[0] : undefined)
+                setPlayerError(getYouTubeErrorMessage(code))
+                setIsBuffering(false)
+                setPlayReady(false)
+                console.error('[GlobalPlayer] YouTube Error:', code, data)
+            }
+
+            // onReady fires when the player is fully initialized
+            if (data.event === 'onReady') {
+                setPlayReady(true)
+                setIsBuffering(false)
+
+                // Final sync on ready
+                const iframe = document.getElementById('youtube-player') as HTMLIFrameElement
+                if (iframe?.contentWindow) {
+                    iframe.contentWindow.postMessage(JSON.stringify({
+                        event: 'command',
+                        func: isPlayingRef.current ? 'playVideo' : 'pauseVideo',
+                        args: []
+                    }), '*')
+                }
+            }
+
+            // Progress via infoDelivery (the master event stream from YT)
+            if (data.event === 'infoDelivery' && data.info) {
+                const info = data.info as any
+                if (typeof info.duration === 'number' && info.duration > 0) {
+                    durationRef.current = info.duration
+                    setDuration(info.duration)
+                }
+                if (typeof info.currentTime === 'number' && durationRef.current > 0) {
+                    const p = info.currentTime / durationRef.current
+                    progressRef.current = p
+                    setProgress(p)
+
+                    // Instant skip if YT reports 100% via infoDelivery
+                    if (p >= 1 || info.currentTime >= durationRef.current - 0.2) {
+                        console.log('[GlobalPlayer] YT infoDelivery reports end')
+                        next(true)
                     }
-                } catch (e) { }
+                }
             }
         }
 
-        window.addEventListener('message', handleMessage)
-        return () => window.removeEventListener('message', handleMessage)
-    }, [next, duration])
+        window.addEventListener('message', handler)
+        return () => window.removeEventListener('message', handler)
+    }, [isYoutube, next, resume, pause]) // Functions are stable from useCallback
 
-    // ─── Progress Watchdog (Fallback skip) ───
+    // YouTube playReady fallback (if onReady never fires but iframe loaded)
     useEffect(() => {
-        if (!isPlaying) return
+        if (!isYoutube || !isPlaying || playReady) return
+        const t = setTimeout(() => setPlayReady(true), 2500)
+        return () => clearTimeout(t)
+    }, [isYoutube, isPlaying, playReady])
 
-        // Fallback A: Exact 100% or very near end
-        if (progress > 0.992) {
-            const timer = setTimeout(() => {
-                console.log('[GlobalPlayer] Watchdog: Track ended (Near 100%)')
-                next(true)
-            }, 1000)
-            return () => clearTimeout(timer)
-        }
+    // YouTube remote control & heartbeat poll
+    useEffect(() => {
+        if (!isYoutube || !hasMounted || !playReady) return
+        const iframe = document.getElementById('youtube-player') as HTMLIFrameElement
+        if (!iframe?.contentWindow) return
 
-        // Fallback B: Periodic state request for YouTube
-        if (isYoutube) {
-            const interval = setInterval(() => {
-                const iframe = document.querySelector('iframe[src*="youtube.com"]') as HTMLIFrameElement
-                if (iframe?.contentWindow) {
-                    iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*')
+        // 1. Sync Play/Pause and Volume immediately on state changes
+        iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: isPlaying ? 'playVideo' : 'pauseVideo',
+            args: []
+        }), '*')
+        iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'setVolume',
+            args: [isMuted ? 0 : Math.round(volume * 100)]
+        }), '*')
+
+        // 2. Poll heartbeat (some videos are shy about reporting time)
+        const interval = setInterval(() => {
+            if (isPlaying) {
+                iframe.contentWindow?.postMessage(JSON.stringify({
+                    event: 'listening',
+                    id: 1,
+                    channel: 'widget'
+                }), '*')
+            }
+        }, 1000)
+
+        return () => clearInterval(interval)
+    }, [isYoutube, isPlaying, volume, isMuted, hasMounted, currentTrack?.id, playReady])
+
+    // ─── Safety Watchdog for YouTube / Apple Sync ───
+    useEffect(() => {
+        if (!isPlaying || duration <= 0) return
+
+        // If we're at 99.5% and haven't flipped to next yet for over 2 seconds
+        if (progress >= 0.995) {
+            const t = setTimeout(() => {
+                if (progress >= 0.995 && isPlaying) {
+                    console.log('[GlobalPlayer] Safety skipping stuck track...')
+                    next(true)
                 }
-            }, 3000)
-            return () => clearInterval(interval)
+            }, 1500)
+            return () => clearTimeout(t)
         }
-    }, [progress, isPlaying, next, isYoutube])
+    }, [isPlaying, progress, duration, next])
 
-    // ─── SoundCloud Widget API Listener & Control ───
+    // ─── SoundCloud Widget ───
     useEffect(() => {
         if (!isSoundCloud || !hasMounted) return
 
@@ -185,88 +274,89 @@ export function GlobalPlayer() {
             document.body.appendChild(script)
         }
 
-        const setupSCControl = () => {
+        const setup = () => {
             const iframe = document.querySelector('iframe[src*="soundcloud.com"]') as HTMLIFrameElement
-            if (iframe && window.SC) {
-                try {
-                    const widget = window.SC.Widget(iframe)
-                    if (widget) {
-                        // Volume Sync (SC uses 0-100)
-                        widget.setVolume(isMuted ? 0 : volume * 100)
+            if (!iframe || !window.SC) return
+            try {
+                const widget = window.SC.Widget(iframe)
+                widget.setVolume(isMuted ? 0 : volume * 100)
+                if (isPlaying) widget.play(); else widget.pause()
 
-                        // Play/Pause Sync
-                        if (isPlaying) widget.play()
-                        else widget.pause()
+                widget.unbind(window.SC.Widget.Events.FINISH)
+                widget.bind(window.SC.Widget.Events.FINISH, () => next(true))
 
-                        // Bind events only once by unbinding first or checking
-                        widget.unbind(window.SC.Widget.Events.FINISH)
-                        widget.bind(window.SC.Widget.Events.FINISH, () => {
-                            console.log('[GlobalPlayer] SoundCloud Track Ended')
-                            next(true)
-                        })
-
-                        widget.unbind(window.SC.Widget.Events.PLAY_PROGRESS)
-                        widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (data: any) => {
-                            const p = data.relativePosition
-                            if (p > 0) {
-                                setProgress(p)
-                                // Only update duration if it changes significantly
-                                const newDur = data.currentPosition / p / 1000
-                                if (Math.abs(newDur - duration) > 1) setDuration(newDur)
-                            }
-                        })
+                widget.unbind(window.SC.Widget.Events.PLAY_PROGRESS)
+                widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (data: any) => {
+                    const p = data.relativePosition
+                    if (p > 0) {
+                        setProgress(p)
+                        const newDur = data.currentPosition / p / 1000
+                        if (Math.abs(newDur - durationRef.current) > 1) setDuration(newDur)
                     }
-                } catch (e) {
-                    console.warn('[GlobalPlayer] SoundCloud widget not ready')
-                }
+                })
+            } catch (e) {
+                console.warn('[GlobalPlayer] SC widget not ready, retrying...')
+                setTimeout(setup, 800)
             }
         }
 
-        const timer = setTimeout(setupSCControl, 500)
-        return () => clearTimeout(timer)
+        const t = setTimeout(setup, 600)
+        return () => clearTimeout(t)
     }, [isSoundCloud, currentTrack?.id, hasMounted, next, isPlaying, volume, isMuted])
 
-    // ─── YouTube Remote Control Sync ───
+    // ─── Sync duration from track metadata ───
     useEffect(() => {
-        if (!isYoutube || !hasMounted || !playReady) return
+        if (!currentTrack) return
+        if (currentTrack.duration && typeof currentTrack.duration === 'string') {
+            const parts = currentTrack.duration.split(':').map(Number)
+            let secs = 0
+            if (parts.length === 2) secs = parts[0] * 60 + parts[1]
+            else if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
+            if (secs > 0) setDuration(secs)
+        }
+    }, [currentTrack?.url, currentTrack?.duration])
 
-        const iframe = document.querySelector('iframe[src*="youtube.com"]') as HTMLIFrameElement
-        if (!iframe || !iframe.contentWindow) return
+    // ─── Generic Embed Sync & Auto-Next Heartbeat ───
+    useEffect(() => {
+        if (!isEmbedPlatform || !hasMounted || isYoutube || isSoundCloud) return
+        const iframe = document.querySelector('iframe[key]') as HTMLIFrameElement
+        if (!iframe?.contentWindow) return
 
-        const command = isPlaying ? 'playVideo' : 'pauseVideo'
-        iframe.contentWindow.postMessage(JSON.stringify({
-            event: 'command',
-            func: command,
-            args: []
-        }), '*')
-
-        // Volume Sync (YouTube uses 0-100)
+        // Volume sync for Apple / Other embeds
         iframe.contentWindow.postMessage(JSON.stringify({
             event: 'command',
             func: 'setVolume',
-            args: [isMuted ? 0 : volume * 100]
+            args: [isMuted ? 0 : Math.round(volume * 100)]
         }), '*')
+    }, [isEmbedPlatform, volume, isMuted, hasMounted, currentTrack?.id, isYoutube, isSoundCloud])
 
-    }, [isYoutube, isPlaying, volume, isMuted, hasMounted, currentTrack?.id, playReady])
-
-    // ─── Reset state when track changes ───
     useEffect(() => {
-        setProgress(0)
-        setDuration(0)
-        setPlayReady(false)
-        setIsBuffering(false)
-        setPlayerError(null)
-    }, [currentTrack?.url])
+        const needsSimulatedProgress = isApple && isPlaying && duration > 0
+        if (!needsSimulatedProgress) return
+
+        const interval = setInterval(() => {
+            setProgress(prev => {
+                const step = 1 / duration
+                const nextVal = prev + step
+                if (nextVal >= 1) {
+                    next(true) // Switch to next song
+                    return 1
+                }
+                return nextVal
+            })
+        }, 1000)
+
+        return () => clearInterval(interval)
+    }, [isApple, isPlaying, duration, next])
 
     // ─── Resolve SoundCloud short links ───
     const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
-
     useEffect(() => {
-        if (!currentTrack?.url) {
-            setResolvedUrl(null)
-            return
-        }
-        if (isSoundCloud && (currentTrack.url.includes('on.soundcloud.com') || currentTrack.url.includes('soundcloud.app.goo.gl'))) {
+        if (!currentTrack?.url) { setResolvedUrl(null); return }
+        if (isSoundCloud && (
+            currentTrack.url.includes('on.soundcloud.com') ||
+            currentTrack.url.includes('soundcloud.app.goo.gl')
+        )) {
             fetch(`/api/resolve-url?url=${encodeURIComponent(currentTrack.url)}`)
                 .then(r => r.json())
                 .then(d => setResolvedUrl(d.resolved ?? currentTrack.url))
@@ -280,26 +370,19 @@ export function GlobalPlayer() {
         if (!currentTrack?.url) return null
         if (isYoutube) {
             const id = extractVideoId(currentTrack.url)
-            if (id) return `https://www.youtube.com/watch?v=${id}`
+            return id ? `https://www.youtube.com/watch?v=${id}` : null
         }
-        return resolvedUrl ?? currentTrack?.url
+        return resolvedUrl ?? currentTrack.url
     })()
 
-    // For YouTube, we bypass playReady to avoid getting stuck if onReady is delayed
-    const shouldPlay = isPlaying && hasUserInteracted && playReady
+    // ─── Spotify SDK ───
+    const [spotifyPlayer, setSpotifyPlayer] = useState<any>(null)
+    const [spotifyDeviceId, setSpotifyDeviceId] = useState<string | null>(null)
+    const [isSpotifyReady, setIsSpotifyReady] = useState(false)
+    const [spotifyError, setSpotifyError] = useState<string | null>(null)
 
-    // Debugging state
     useEffect(() => {
-        if (isYoutube && activeUrl) {
-            console.log('[GlobalPlayer] YouTube State:', { activeUrl, shouldPlay, isPlaying, hasUserInteracted, playReady })
-        }
-    }, [activeUrl, shouldPlay, isPlaying, hasUserInteracted, playReady, isYoutube])
-
-    // Initialize Spotify SDK
-    useEffect(() => {
-        if (!user) return
-        if (document.getElementById('spotify-player-sdk')) return
-
+        if (!user || document.getElementById('spotify-player-sdk')) return
         const script = document.createElement('script')
         script.id = 'spotify-player-sdk'
         script.src = 'https://sdk.scdn.co/spotify-player.js'
@@ -308,173 +391,179 @@ export function GlobalPlayer() {
 
         window.onSpotifyWebPlaybackSDKReady = () => {
             const token = localStorage.getItem(SPOTIFY_TOKEN_KEY)
-            if (!token) {
-                setSpotifyError('Connect Spotify to enable playback.')
-                return
-            }
+            if (!token) { setSpotifyError('Connect Spotify to enable playback.'); return }
 
             const player = new window.Spotify.Player({
                 name: 'UNIFY Web Player',
-                getOAuthToken: (cb: any) => { cb(token); },
-                volume: volume
+                getOAuthToken: (cb: any) => { cb(token) },
+                volume,
             })
-
             player.addListener('ready', ({ device_id }: any) => {
-                setSpotifyDeviceId(device_id)
-                setIsSpotifyReady(true)
-                setSpotifyError(null)
+                setSpotifyDeviceId(device_id); setIsSpotifyReady(true); setSpotifyError(null)
             })
-
-            player.addListener('not_ready', ({ device_id }: any) => {
-                setIsSpotifyReady(false)
-            })
-
-            player.addListener('authentication_error', () => {
-                setSpotifyError('Authentication failed. Token might be expired.')
-            })
-            player.addListener('account_error', () => {
-                setSpotifyError('Premium account required for Spotify.')
-            })
-
+            player.addListener('not_ready', () => setIsSpotifyReady(false))
+            player.addListener('authentication_error', () =>
+                setSpotifyError('Token expired. Reconnect Spotify.'))
+            player.addListener('account_error', () =>
+                setSpotifyError('Spotify Premium required.'))
             player.addListener('player_state_changed', (state: any) => {
                 if (!state) return
                 if (state.duration) setDuration(state.duration / 1000)
-
-                // Improved End-of-Track Detection
                 const isNearEnd = state.duration > 0 && (state.duration - state.position) < 1000 && state.paused
-                const isAtStart = state.position === 0 && state.paused && !state.loading
-
                 const now = Date.now()
-                const lastEnd = (window as any)._lastSpotifyEnd || 0
-
-                if ((isAtStart || isNearEnd) && lastEnd < now - 3000) {
-                    if (isNearEnd || (isAtStart && state.track_window?.previous_tracks?.length > 0)) {
-                        (window as any)._lastSpotifyEnd = now
-                        console.log('[GlobalPlayer] Spotify Auto-Advance Triggered', { isNearEnd, isAtStart })
-                        next(true)
-                    }
+                const lastEnd = (window as any)._lastSpotifyEnd ?? 0
+                if (isNearEnd && lastEnd < now - 3000) {
+                    ; (window as any)._lastSpotifyEnd = now
+                    next(true)
                 }
             })
-
             player.connect()
             setSpotifyPlayer(player)
         }
     }, [user])
 
-    // Update Spotify Volume
     useEffect(() => {
-        if (spotifyPlayer) {
-            spotifyPlayer.setVolume(isMuted ? 0 : volume)
-        }
+        if (spotifyPlayer) spotifyPlayer.setVolume(isMuted ? 0 : volume)
     }, [volume, isMuted, spotifyPlayer])
 
-    // Sync Play/Pause with Spotify SDK
     useEffect(() => {
         if (!spotifyPlayer || !isSpotifyReady) return
-
-        if (isSpotify && isPlaying) {
-            spotifyPlayer.resume().catch((e: any) => console.error('Spotify Resume Error:', e))
-        } else {
-            // Pause if not playing OR if we've switched to a different platform
-            spotifyPlayer.pause().catch((e: any) => console.error('Spotify Pause Error:', e))
-        }
+        if (isSpotify && isPlaying) spotifyPlayer.resume().catch(console.error)
+        else spotifyPlayer.pause().catch(console.error)
     }, [isPlaying, isSpotify, spotifyPlayer, isSpotifyReady])
 
-    // Poll Spotify Progress
     useEffect(() => {
-        let interval: any
+        let interval: ReturnType<typeof setInterval>
         if (isSpotify && isPlaying && spotifyPlayer) {
             interval = setInterval(async () => {
                 const state = await spotifyPlayer.getCurrentState()
                 if (state) {
                     setProgress(state.position / state.duration)
-                    if (state.duration / 1000 !== duration) setDuration(state.duration / 1000)
+                    if (Math.abs(state.duration / 1000 - duration) > 0.5)
+                        setDuration(state.duration / 1000)
                 }
             }, 1000)
         }
         return () => clearInterval(interval)
     }, [isSpotify, isPlaying, spotifyPlayer, duration])
 
-    // Handle Spotify Playback start
     useEffect(() => {
         if (!currentTrack || !isSpotify || !isSpotifyReady || !spotifyDeviceId) return
-
         const token = localStorage.getItem(SPOTIFY_TOKEN_KEY)
         const spotifyId = extractSpotifyId(currentTrack.url)
         if (spotifyId) {
             fetch(`https://api.spotify.com/v1/me/player/play?device_id=${spotifyDeviceId}`, {
                 method: 'PUT',
                 body: JSON.stringify({ uris: [`spotify:track:${spotifyId}`] }),
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             })
         }
     }, [currentTrack?.url, isSpotify, isSpotifyReady, spotifyDeviceId])
 
-    // ─── Local Audio Control ───
+    // ─── Local Audio ───
     useEffect(() => {
         if (!isLocal || !localAudioRef.current) return
-
         const audio = localAudioRef.current
         audio.volume = isMuted ? 0 : volume
-
-        if (isPlaying) {
-            audio.play().catch(e => {
-                console.warn('[GlobalPlayer] Local play failed:', e)
-                if (e.name === 'NotAllowedError') setPlayerError('Click play to enable audio')
-            })
-        } else {
-            audio.pause()
-        }
+        if (isPlaying) audio.play().catch(e => {
+            if (e.name === 'NotAllowedError') setPlayerError('Click play to enable audio')
+        })
+        else audio.pause()
     }, [isLocal, isPlaying, volume, isMuted, currentTrack?.url])
 
     const { login: spotifyLogin } = useSpotifyAuth()
+    if (!currentTrack) return null
 
-    if (!user || !currentTrack) return null
+    const videoContainerStyle: React.CSSProperties = {
+        position: 'fixed',
+        bottom: '92px',
+        right: '24px',
+        width: '320px',
+        aspectRatio: '16/9',
+        zIndex: 100,
+        borderRadius: '12px',
+        overflow: 'hidden',
+        boxShadow: '0 20px 48px -12px rgba(0,0,0,0.7)',
+        border: '1px solid rgba(255,255,255,0.15)',
+        backgroundColor: '#000',
+        transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+        display: isEmbedPlatform ? 'block' : 'none',
+        opacity: (showVideo && !isYoutubeMusic) ? 1 : 0,
+        pointerEvents: (showVideo && !isYoutubeMusic) ? 'auto' : 'none',
+        transform: (showVideo && !isYoutubeMusic) ? 'translate(0,0) scale(1)' : 'translate(0,40px) scale(0.95)',
+        visibility: isEmbedPlatform ? 'visible' : 'hidden',
+    }
 
     return (
         <>
+            {/* ── Video popup ── */}
             {hasMounted && isEmbedPlatform && activeUrl && (
                 <div style={videoContainerStyle} aria-hidden={!showVideo}>
                     <div className="flex flex-col h-full">
                         <div className="bg-black/80 px-3 py-1.5 flex items-center justify-between border-b border-white/10">
                             <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                                {isYoutube ? 'YouTube' : isSoundCloud ? 'SoundCloud' : 'Apple Music'} Player
+                                {isYoutubeMusic ? 'YouTube Music' : isYoutube ? 'YouTube' : isSoundCloud ? 'SoundCloud' : 'Apple Music'} Player
                             </span>
                             <button
                                 onClick={() => setShowVideo(false)}
-                                className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+                                className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+                                title="Hide"
                             >
                                 <VolumeX size={10} className="rotate-45" />
                             </button>
                         </div>
+
                         <div className="flex-1 relative bg-black">
-                            {isYoutube ? (
+                            {isYoutube ? (() => {
+                                const videoId = extractVideoId(currentTrack.url)
+                                if (!videoId) return (
+                                    <div className="flex flex-col items-center justify-center h-full text-muted gap-2 p-4 text-center">
+                                        <Music2 size={24} />
+                                        <div className="text-xs font-mono uppercase">Invalid YouTube ID</div>
+                                        <a href={currentTrack.url} target="_blank" rel="noopener noreferrer"
+                                            className="text-[10px] text-accent hover:underline">Open Original</a>
+                                    </div>
+                                )
+                                return (
+                                    <>
+                                        {/* ── Error overlay shown when YouTube sends onError event ── */}
+                                        {playerError && (
+                                            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/90 gap-3 p-4 text-center">
+                                                <div className="text-xs text-red-400 font-mono leading-relaxed">{playerError}</div>
+                                                <a
+                                                    href={currentTrack.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-1.5 text-[11px] font-bold text-white bg-red-600 hover:bg-red-500 px-3 py-1.5 rounded-lg transition-colors"
+                                                >
+                                                    <ExternalLink size={11} />
+                                                    Open on {isYoutubeMusic ? 'YouTube Music' : 'YouTube'}
+                                                </a>
+                                            </div>
+                                        )}
+                                        <iframe
+                                            id="youtube-player"
+                                            key={currentTrack.id}
+                                            // FIX: use buildYouTubeEmbedUrl — no encodeURIComponent on origin
+                                            src={buildYouTubeEmbedUrl(videoId)}
+                                            className="w-full h-full border-0"
+                                            allow="autoplay; encrypted-media; fullscreen"
+                                            allowFullScreen
+                                            onLoad={() => {
+                                                // onLoad doesn't mean ready — we wait for onReady postMessage
+                                                // But set a fallback in case onReady never fires
+                                                setIsBuffering(false)
+                                            }}
+                                        />
+                                    </>
+                                )
+                            })() : isSoundCloud ? (
                                 <iframe
                                     key={currentTrack.id}
-                                    src={`https://www.youtube.com/embed/${extractVideoId(currentTrack.url)}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
-                                    className="w-full h-full border-0"
-                                    allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-                                    allowFullScreen
-                                    onLoad={() => {
-                                        console.log('[GlobalPlayer] YouTube Iframe Loaded')
-                                        setPlayReady(true)
-                                        setIsBuffering(false)
-                                    }}
-                                />
-                            ) : isSoundCloud ? (
-                                <iframe
-                                    key={currentTrack.id}
-                                    src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(activeUrl)}&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=true&color=%23ff5500`}
+                                    src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(activeUrl)}&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&visual=true&color=%23ff5500`}
                                     className="w-full h-full border-0"
                                     allow="autoplay"
-                                    onLoad={() => {
-                                        console.log('[GlobalPlayer] SoundCloud Iframe Loaded')
-                                        setPlayReady(true)
-                                        setIsBuffering(false)
-                                    }}
+                                    onLoad={() => { setPlayReady(true); setIsBuffering(false) }}
                                 />
                             ) : isApple ? (
                                 <iframe
@@ -482,11 +571,7 @@ export function GlobalPlayer() {
                                     src={activeUrl.replace('music.apple.com', 'embed.music.apple.com')}
                                     className="w-full h-full border-0"
                                     allow="autoplay; encrypted-media; fullscreen"
-                                    style={{ borderRadius: '0' }}
-                                    onLoad={() => {
-                                        setPlayReady(true)
-                                        setIsBuffering(false)
-                                    }}
+                                    onLoad={() => { setPlayReady(true); setIsBuffering(false) }}
                                 />
                             ) : null}
                         </div>
@@ -494,6 +579,7 @@ export function GlobalPlayer() {
                 </div>
             )}
 
+            {/* ── Player bar ── */}
             <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-t border-border p-4 z-50 animate-slideUp">
                 <div className="max-w-7xl mx-auto flex items-center justify-between gap-8">
 
@@ -502,14 +588,13 @@ export function GlobalPlayer() {
                         <div className="w-14 h-14 rounded-lg bg-surface2 border border-border overflow-hidden relative flex-shrink-0 group">
                             {currentTrack.thumbnail ? (
                                 <>
-                                    <Image src={currentTrack.thumbnail} alt={currentTrack.title} fill className="object-cover group-hover:scale-110 transition-transform duration-500" />
-                                    {isYoutube && (
-                                        <button
-                                            onClick={() => setShowVideo(!showVideo)}
+                                    <Image src={currentTrack.thumbnail} alt={currentTrack.title} fill
+                                        className="object-cover group-hover:scale-110 transition-transform duration-500" />
+                                    {isEmbedPlatform && !isYoutubeMusic && (
+                                        <button onClick={() => setShowVideo(v => !v)}
                                             className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                            title="Show Video"
-                                        >
-                                            <Maximize2 size={18} className="text-white" />
+                                            title={showVideo ? 'Hide Video' : 'Show Video'}>
+                                            <Music2 size={18} className="text-white" />
                                         </button>
                                     )}
                                 </>
@@ -517,43 +602,62 @@ export function GlobalPlayer() {
                                 <div className="flex items-center justify-center w-full h-full text-muted"><Music2 size={20} /></div>
                             )}
                         </div>
-                        <div className="min-w-0 flex-1">
-                            <div className="font-display font-bold text-sm truncate hover:text-primary transition-colors cursor-default">{currentTrack.title}</div>
-                            <div className="font-mono-custom text-xs text-muted truncate hover:text-white transition-colors cursor-default">{currentTrack.artist}</div>
 
-                            {isSpotify && (
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 group/title">
+                                <div className="font-display font-bold text-sm truncate">{currentTrack.title}</div>
+                                <a href={currentTrack.url} target="_blank" rel="noopener noreferrer"
+                                    className="text-muted/40 hover:text-white transition-colors opacity-0 group-hover/title:opacity-100"
+                                    title={`Open on ${platformDisplayName(currentTrack.platform)}`}>
+                                    <ExternalLink size={12} />
+                                </a>
+                            </div>
+                            <div className="font-mono-custom text-xs text-muted truncate">{currentTrack.artist}</div>
+
+                            {/* Status line */}
+                            {isEmbedPlatform && (
                                 <div className="mt-1">
-                                    {!isSpotifyReady ? (
-                                        <div className="flex flex-col gap-1">
-                                            {spotifyError ? (
-                                                <>
-                                                    <div className="text-[9px] text-red-400 font-mono tracking-tight leading-tight uppercase">
-                                                        {spotifyError}
-                                                    </div>
-                                                    <button onClick={() => spotifyLogin()} className="text-[10px] text-primary hover:underline font-bold text-left uppercase">
-                                                        Connect Spotify
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                <div className="text-[10px] text-muted animate-pulse font-mono flex items-center gap-1.5 uppercase">
-                                                    <Loader2 size={10} className="animate-spin" />
-                                                    Initializing...
-                                                </div>
-                                            )}
+                                    {playerError ? (
+                                        <div className="text-[10px] text-red-400 font-mono truncate flex items-center gap-1" title={playerError}>
+                                            ⚠ {playerError}
                                         </div>
+                                    ) : isBuffering ? (
+                                        <div className="flex items-center gap-1 text-[10px] text-muted font-mono">
+                                            <Loader2 size={9} className="animate-spin" /> Loading…
+                                        </div>
+                                    ) : !isYoutubeMusic ? (
+                                        <button
+                                            onClick={() => setShowVideo(v => !v)}
+                                            className={`text-[9px] font-mono-custom uppercase tracking-wider px-1.5 py-0.5 rounded border transition-colors
+                                                ${showVideo ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-white/5 border-white/10 text-muted hover:text-white'}`}
+                                        >
+                                            {showVideo ? 'Hide Video' : 'Show Video'}
+                                        </button>
                                     ) : (
-                                        <div className="text-[9px] text-accent font-mono uppercase tracking-[1px]">Connected to SDK</div>
+                                        <div className="text-[9px] text-accent font-mono uppercase tracking-wider">Audio Mode</div>
                                     )}
                                 </div>
                             )}
 
-                            {(isEmbedPlatform) && (
+                            {isSpotify && (
                                 <div className="mt-1">
-                                    {playerError ? (
-                                        <div className="text-[10px] text-red-400 font-mono truncate" title={playerError}>⚠ {playerError}</div>
-                                    ) : isBuffering ? (
-                                        <div className="flex items-center gap-1 text-[10px] text-muted font-mono"><Loader2 size={9} className="animate-spin" /> Loading…</div>
-                                    ) : null}
+                                    {!isSpotifyReady ? (
+                                        spotifyError ? (
+                                            <div className="flex flex-col gap-0.5">
+                                                <div className="text-[9px] text-red-400 font-mono uppercase leading-tight">{spotifyError}</div>
+                                                <button onClick={() => spotifyLogin()}
+                                                    className="text-[10px] text-primary hover:underline font-bold text-left uppercase">
+                                                    Connect Spotify
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="text-[10px] text-muted animate-pulse font-mono flex items-center gap-1.5 uppercase">
+                                                <Loader2 size={10} className="animate-spin" /> Initializing…
+                                            </div>
+                                        )
+                                    ) : (
+                                        <div className="text-[9px] text-accent font-mono uppercase tracking-[1px]">Connected</div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -562,67 +666,63 @@ export function GlobalPlayer() {
                     {/* Controls */}
                     <div className="flex flex-col items-center gap-2 flex-1 max-w-2xl">
                         <div className="flex items-center gap-6">
-                            <button onClick={toggleShuffle} className={`transition-colors hover:scale-110 active:scale-95 ${isShuffle ? 'text-primary' : 'text-muted hover:text-text'}`}>
+                            <button onClick={toggleShuffle}
+                                className={`transition-colors hover:scale-110 active:scale-95 ${isShuffle ? 'text-primary' : 'text-muted hover:text-text'}`}>
                                 <Shuffle size={18} />
                             </button>
-
                             <button onClick={() => prev()} className="text-muted hover:text-text transition-colors hover:scale-110 active:scale-95">
                                 <SkipBack size={20} />
                             </button>
-
                             <button
                                 onMouseDown={() => setHasUserInteracted(true)}
                                 onClick={isPlaying ? pause : resume}
                                 className="w-10 h-10 rounded-full bg-text text-bg flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-white/10 active:scale-95"
                             >
-                                {isBuffering && !playerError ? <Loader2 size={18} className="animate-spin" /> : isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                                {isBuffering && !playerError
+                                    ? <Loader2 size={18} className="animate-spin" />
+                                    : isPlaying
+                                        ? <Pause size={20} fill="currentColor" />
+                                        : <Play size={20} fill="currentColor" className="ml-0.5" />
+                                }
                             </button>
-
                             <button onClick={() => next()} className="text-muted hover:text-text transition-colors hover:scale-110 active:scale-95">
                                 <SkipForward size={20} />
                             </button>
-
-                            <button onClick={toggleRepeat} className={`transition-colors hover:scale-110 active:scale-95 relative ${repeatMode !== 'off' ? 'text-primary' : 'text-muted hover:text-text'}`}>
+                            <button onClick={toggleRepeat}
+                                className={`transition-colors hover:scale-110 active:scale-95 relative ${repeatMode !== 'off' ? 'text-primary' : 'text-muted hover:text-text'}`}>
                                 {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
                                 {repeatMode !== 'off' && <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />}
                             </button>
                         </div>
 
+                        {/* Seek */}
                         <div className="w-full flex items-center gap-3">
                             <span className="text-[10px] font-mono-custom text-muted/50 tabular-nums w-10 text-right">
                                 {formatTime(progress * duration)}
                             </span>
                             <Slider.Root
                                 className="relative flex items-center select-none touch-none w-full h-4 cursor-pointer group"
-                                value={[progress]}
-                                max={1}
-                                step={0.001}
+                                value={[progress]} max={1} step={0.001}
                                 onValueChange={(val) => {
                                     setProgress(val[0])
-                                    if (isSpotify && spotifyPlayer && typeof spotifyPlayer.seek === 'function') {
-                                        spotifyPlayer.seek(val[0] * duration * 1000)
+                                    const seekSecs = val[0] * duration
+                                    if (isSpotify && spotifyPlayer) {
+                                        spotifyPlayer.seek(seekSecs * 1000)
                                     } else if (isYoutube) {
                                         const iframe = document.querySelector('iframe[src*="youtube.com"]') as HTMLIFrameElement
-                                        if (iframe?.contentWindow) {
-                                            iframe.contentWindow.postMessage(JSON.stringify({
-                                                event: 'command',
-                                                func: 'seekTo',
-                                                args: [val[0] * duration, true]
-                                            }), '*')
-                                        }
+                                        iframe?.contentWindow?.postMessage(JSON.stringify({
+                                            event: 'command', func: 'seekTo', args: [seekSecs, true]
+                                        }), '*')
                                     } else if (isSoundCloud && window.SC) {
                                         const iframe = document.querySelector('iframe[src*="soundcloud.com"]') as HTMLIFrameElement
-                                        if (iframe) {
-                                            const widget = window.SC.Widget(iframe)
-                                            widget?.seekTo(val[0] * duration * 1000)
-                                        }
+                                        if (iframe) window.SC.Widget(iframe)?.seekTo(seekSecs * 1000)
                                     } else if (isLocal && localAudioRef.current) {
-                                        localAudioRef.current.currentTime = val[0] * duration
+                                        localAudioRef.current.currentTime = seekSecs
                                     }
                                 }}
                             >
                                 <Slider.Track className="bg-surface2 relative grow rounded-full h-1 group-hover:h-1.5 transition-all">
-                                    <Slider.Range className="absolute bg-primary rounded-full h-full group-hover:bg-primary/80 transition-colors" />
+                                    <Slider.Range className="absolute bg-primary rounded-full h-full" />
                                 </Slider.Track>
                                 <Slider.Thumb className="block w-2.5 h-2.5 bg-white rounded-full hover:scale-125 focus:outline-none shadow-lg opacity-0 group-hover:opacity-100 transition-all" />
                             </Slider.Root>
@@ -632,17 +732,14 @@ export function GlobalPlayer() {
                         </div>
                     </div>
 
-                    {/* Volume Control */}
+                    {/* Volume */}
                     <div className="w-1/4 flex justify-end items-center gap-3">
                         <button onClick={toggleMute} className="text-muted hover:text-text transition-colors">
                             {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
                         </button>
-
                         <Slider.Root
                             className="relative flex items-center select-none touch-none w-24 h-4 cursor-pointer group"
-                            value={[isMuted ? 0 : volume]}
-                            max={1}
-                            step={0.01}
+                            value={[isMuted ? 0 : volume]} max={1} step={0.01}
                             onValueChange={(val) => setVolume(val[0])}
                         >
                             <Slider.Track className="bg-surface2 relative grow rounded-full h-1">
@@ -654,29 +751,21 @@ export function GlobalPlayer() {
                 </div>
             </div>
 
-            {/* Local Audio Element */}
+            {/* Local audio element */}
             {isLocal && (
                 <audio
                     ref={localAudioRef}
                     src={currentTrack.url}
                     onEnded={() => next(true)}
                     onTimeUpdate={(e) => {
-                        const audio = e.currentTarget
-                        setProgress(audio.currentTime / audio.duration)
-                        setDuration(audio.duration)
+                        const a = e.currentTarget
+                        if (a.duration) { setProgress(a.currentTime / a.duration); setDuration(a.duration) }
                     }}
-                    onLoadStart={() => setIsBuffering(true)}
-                    onCanPlay={() => {
-                        setIsBuffering(false)
-                        setPlayReady(true)
-                    }}
-                    onError={(e) => {
-                        console.error('[GlobalPlayer] Local Audio Error:', e)
-                        setPlayerError('Failed to load local audio file.')
-                    }}
+                    onCanPlay={() => { setIsBuffering(false); setPlayReady(true) }}
+                    onWaiting={() => setIsBuffering(true)}
+                    onError={() => setPlayerError('Failed to load local audio file.')}
                 />
             )}
         </>
     )
 }
-

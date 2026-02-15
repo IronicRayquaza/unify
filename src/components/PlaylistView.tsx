@@ -37,6 +37,7 @@ const FILTERS: { label: string; value: FilterType }[] = [
   { label: 'All', value: 'all' },
   { label: 'Spotify', value: 'spotify' },
   { label: 'YouTube', value: 'youtube' },
+  { label: 'YouTube Music', value: 'ytmusic' },
   { label: 'SoundCloud', value: 'soundcloud' },
   { label: 'Apple Music', value: 'apple' },
   { label: 'Local Files', value: 'local' },

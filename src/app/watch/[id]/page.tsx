@@ -4,6 +4,7 @@
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Youtube, ExternalLink, Loader2 } from 'lucide-react'
+import { buildYouTubeEmbedUrl } from '@/lib/platform'
 
 export default function WatchPage() {
     const { id } = useParams()
@@ -54,7 +55,7 @@ export default function WatchPage() {
 
                     {hasMounted && (
                         <iframe
-                            src={`https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+                            src={buildYouTubeEmbedUrl(id as string)}
                             className="w-full h-full"
                             allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
                             allowFullScreen

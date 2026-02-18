@@ -76,14 +76,36 @@ export function platformTagClass(platform: Platform): string {
 }
 
 export function extractVideoId(url: string): string | null {
-  const match = url.match(/(?:v=|youtu\.be\/|youtube\.com\/(?:embed|v|shorts)\/|music\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/i)
-  if (match) return match[1]
+  if (!url) return null
 
-  // Fallback for some music.youtube.com structures
+  // Clean the URL
+  const cleanedUrl = url.trim()
+
+  // Regular expressions for various YouTube URL formats
+  const patterns = [
+    /(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/watch\?v=|\/watch\?.+&v=)([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/live\/([a-zA-Z0-9_-]{11})/,
+    /music\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
+  ]
+
+  for (const pattern of patterns) {
+    const match = cleanedUrl.match(pattern)
+    if (match && match[1]) return match[1]
+  }
+
+  // Fallback using URL search params for robustness
   try {
-    const urlObj = new URL(url)
-    if (urlObj.hostname.includes('youtube.com')) {
-      return urlObj.searchParams.get('v')
+    const urlObj = new URL(cleanedUrl)
+    if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
+      const v = urlObj.searchParams.get('v')
+      if (v && v.length === 11) return v
+
+      // Handle paths like /v/ID or /embed/ID
+      const pathParts = urlObj.pathname.split('/')
+      for (const part of pathParts) {
+        if (part.length === 11 && /^[a-zA-Z0-9_-]+$/.test(part)) return part
+      }
     }
   } catch (e) { }
 
@@ -123,6 +145,28 @@ export function parseFallbackInfo(url: string, platform: Platform) {
   }
 
   return { title, artist }
+}
+
+// ─────────────────────────────────────────────
+// YouTube logic moved to @/lib/platform
+// ─────────────────────────────────────────────
+
+export function buildYouTubeEmbedUrl(videoId: string): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const params = new URLSearchParams({
+    autoplay: '1',
+    rel: '0',
+    modestbranding: '1',
+    enablejsapi: '1',
+    origin,
+    widget_referrer: origin,
+    playsinline: '1',
+    hl: 'en',
+    color: 'white',
+    iv_load_policy: '3', // Hide annotations
+  })
+  // youtube-nocookie.com often bypasses certain region/domain restrictions
+  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`
 }
 
 export function isValidUrl(url: string): boolean {

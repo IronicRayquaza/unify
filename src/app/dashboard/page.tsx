@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { usePlaylists } from '@/lib/usePlaylists'
+import { usePlaylists } from '@/lib/playlist-context'
 import { Sidebar } from '@/components/Sidebar'
 import { Navbar } from '@/components/Navbar'
 import { PlaylistView } from '@/components/PlaylistView'

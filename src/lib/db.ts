@@ -15,7 +15,7 @@ export interface Track {
     artist: string
     url: string
     thumbnail?: string
-    platform: 'youtube' | 'soundcloud' | 'spotify'
+    platform: 'youtube' | 'soundcloud' | 'spotify' | 'local'
     duration?: number
 }
 

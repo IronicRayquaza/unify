@@ -4,7 +4,7 @@
 import { Track } from '@/types'
 import { extractSpotifyId, extractVideoId } from '@/lib/platform'
 import { useEffect, useState } from 'react'
-import { Loader2, Zap, ExternalLink } from 'lucide-react'
+import { Loader2, Zap, ExternalLink, Music2 } from 'lucide-react'
 import Link from 'next/link'
 
 interface Props {
@@ -158,6 +158,24 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
                         {resolving ? 'Searching...' : 'Play Full Song (Audio Only)'}
                     </span>
                 </button>
+            </div>
+        )
+    }
+
+    // 5. Local Files (Captured Tracks)
+    if (track.platform === 'local') {
+        return (
+            <div className="flex flex-col gap-2">
+                <div className="relative aspect-video rounded-xl overflow-hidden border border-border bg-surface2 flex items-center justify-center group">
+                    <audio
+                        src={track.url}
+                        controls
+                        className="w-[80%] h-10 opacity-70 hover:opacity-100 transition-opacity"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <Music2 className="text-muted/20 w-12 h-12" />
+                    </div>
+                </div>
             </div>
         )
     }

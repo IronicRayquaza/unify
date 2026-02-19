@@ -119,10 +119,10 @@ export function SortableTrackCard({ track, index, isPlaying, onPlay, onRemove, o
           <ExternalLink size={13} />
         </a>
 
-        {(track.platform === 'youtube' || track.platform === 'ytmusic') && (
+        {(track.platform === 'youtube') && (
           <Link
             href={`/watch/${extractVideoId(track.url)}`}
-            className="p-1.5 rounded-lg border border-border text-accent hover:bg-accent/10 hover:border-accent transition-all animate-pulse"
+            className="p-1.5 rounded-lg border border-border text-accent hover:bg-accent/10 hover:border-accent transition-all"
             title="Open in Direct Watch Mode"
             onClick={e => e.stopPropagation()}
           >

@@ -78,46 +78,6 @@ export async function GET(req: NextRequest) {
         console.error('YouTube search error:', e)
     }
 
-    // 1b. YouTube Music Search
-    try {
-        const { data: ytmData } = await axios.get(`https://music.youtube.com/search?q=${encodeURIComponent(q)}`, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9'
-            }
-        });
-
-        const ytmMatch = ytmData.match(/(?:var|window\[['"])ytInitialData['"]\]?\s*=\s*({[\s\S]*?});/);
-        if (ytmMatch) {
-            const json = JSON.parse(ytmMatch[1]);
-            const shelf = json.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents;
-            if (shelf) {
-                let count = 0;
-                for (const section of shelf) {
-                    const musicItems = section.musicShelfRenderer?.contents || section.musicCardShelfRenderer?.contents;
-                    if (musicItems) {
-                        for (const item of musicItems) {
-                            const m = item.musicResponsiveListItemRenderer;
-                            if (m && count < 5) {
-                                const videoId = m.playlistItemData?.videoId || m.doubleTapCommand?.watchEndpoint?.videoId;
-                                if (!videoId) continue;
-                                results.push({
-                                    id: videoId,
-                                    url: `https://music.youtube.com/watch?v=${videoId}`,
-                                    title: m.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text || 'Unknown',
-                                    artist: m.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text || 'YouTube Music',
-                                    thumbnail: m.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.[0]?.url,
-                                    platform: 'ytmusic'
-                                });
-                                count++;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    } catch (e) { }
-
     // 2. SoundCloud Search
     try {
         const { data: mainPage } = await axios.get('https://soundcloud.com', { headers: { 'User-Agent': 'Mozilla/5.0' } })

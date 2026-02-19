@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { ArrowLeft } from 'lucide-react'
 
 export default function SignInPage() {
   const [email, setEmail] = useState('')
@@ -43,6 +44,15 @@ export default function SignInPage() {
       </div>
 
       <div className="relative z-10 w-full max-w-sm px-6 animate-fadeIn">
+        {/* Back Button */}
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface/50 border border-border hover:border-accent/40 text-muted hover:text-text transition-all mb-8 group backdrop-blur-sm"
+        >
+          <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+          <span className="font-mono-custom text-[11px] tracking-wider uppercase font-bold">Back to Home</span>
+        </Link>
+
         {/* Logo */}
         <div className="text-center mb-10">
           <div className="text-5xl font-display font-black tracking-tighter mb-1"

@@ -6,6 +6,8 @@ import { extractSpotifyId, extractVideoId } from '@/lib/platform'
 import { useEffect, useState } from 'react'
 import { Loader2, Zap, ExternalLink, Music2 } from 'lucide-react'
 import Link from 'next/link'
+import { usePlayer } from '@/lib/player-context'
+import clsx from 'clsx'
 
 interface Props {
     track: Track
@@ -13,9 +15,11 @@ interface Props {
 }
 
 export function TrackPlayer({ track, autoPlay = false }: Props) {
+    const { play, currentTrack, isPlaying: globalIsPlaying } = usePlayer()
+    const isCurrent = currentTrack?.id === track.id
+    // If it's current, we consider it "Active Globally" regardless of play/pause
+    const isGlobalActive = isCurrent
     const [isReady, setIsReady] = useState(false)
-    const [forceFullAudio, setForceFullAudio] = useState(false)
-    const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
     const [resolving, setResolving] = useState(false)
 
     // Hydration fix
@@ -29,20 +33,44 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
             const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
             if (res.ok) {
                 const data = await res.json()
-                setResolvedUrl(data.url)
-                setForceFullAudio(true)
+                const ytUrl = data.url
+                if (ytUrl) {
+                    // Update global player with the new YouTube URL
+                    play({
+                        ...track,
+                        url: ytUrl,
+                        platform: 'youtube'
+                    })
+                }
             } else {
                 alert('Could not find a full audio source for this track.')
             }
-        } catch {
+        } catch (err) {
+            console.error('Failed to resolve full audio:', err)
             alert('Failed to resolve full audio.')
         } finally {
             setResolving(false)
         }
     }
 
-    // 1. YouTube & SoundCloud (Use Native Iframes)
-    if (track.platform === 'youtube' || track.platform === 'ytmusic') {
+    // 1. YouTube & SoundCloud (Use Native Iframes if NOT active in global player)
+    if (track.platform === 'youtube') {
+        if (isGlobalActive) {
+            return (
+                <div className="flex flex-col items-center justify-center gap-4 py-8 bg-surface2/50 rounded-xl border border-accent/20">
+                    <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                        <Loader2 className={clsx(globalIsPlaying && "animate-spin", "text-accent")} size={24} />
+                    </div>
+                    <div className="text-center">
+                        <div className="font-display font-bold text-sm text-accent">
+                            {globalIsPlaying ? 'Playing via Global Engine' : 'Active on Global Player'}
+                        </div>
+                        <div className="font-mono-custom text-[9px] text-muted uppercase tracking-widest mt-1">Controls active in bottom bar</div>
+                    </div>
+                </div>
+            )
+        }
+
         const id = extractVideoId(track.url)
         return (
             <div className="flex flex-col gap-2">
@@ -66,6 +94,21 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
     }
 
     if (track.platform === 'soundcloud') {
+        if (isGlobalActive) {
+            return (
+                <div className="flex flex-col items-center justify-center gap-4 py-8 bg-surface2/50 rounded-xl border border-accent/20">
+                    <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                        <Loader2 className={clsx(globalIsPlaying && "animate-spin", "text-accent")} size={24} />
+                    </div>
+                    <div className="text-center">
+                        <div className="font-display font-bold text-sm text-accent">
+                            {globalIsPlaying ? 'Playing via Global Engine' : 'Active on Global Player'}
+                        </div>
+                        <div className="font-mono-custom text-[9px] text-muted uppercase tracking-widest mt-1">Controls active in bottom bar</div>
+                    </div>
+                </div>
+            )
+        }
         return (
             <iframe
                 width="100%"
@@ -79,30 +122,27 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
         )
     }
 
-
-    // 2. Forced Full Audio Mode (Resolved from YouTube)
-    if (forceFullAudio && resolvedUrl) {
-        const id = extractVideoId(resolvedUrl)
-        return (
-            <div className="flex flex-col gap-2">
-                <div className="relative aspect-video rounded-xl overflow-hidden border border-border bg-black">
-                    <iframe
-                        src={`https://www.youtube.com/embed/${id}?rel=0&modestbranding=1`}
-                        className="w-full h-full border-0"
-                        allow="autoplay; encrypted-media; fullscreen"
-                        allowFullScreen
-                    />
-                </div>
-                <div className="text-center font-mono-custom text-[10px] text-accent">
-                    Playing full audio via YouTube
-                </div>
-            </div>
-        )
-    }
+    // 2. Removed Forced Full Audio Mode - Handled by Global Player Trigger
 
     // 3. Spotify Embed with "Full Song" Option
     if (track.platform === 'spotify') {
         const id = extractSpotifyId(track.url)
+
+        if (isGlobalActive) {
+            return (
+                <div className="flex flex-col items-center justify-center gap-4 py-8 bg-surface2/50 rounded-xl border border-accent/20">
+                    <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                        <Loader2 className={clsx(globalIsPlaying && "animate-spin", "text-accent")} size={24} />
+                    </div>
+                    <div className="text-center">
+                        <div className="font-display font-bold text-sm text-accent">
+                            {globalIsPlaying ? 'Connected to Global Engine' : 'Active on Global Player'}
+                        </div>
+                        <div className="font-mono-custom text-[9px] text-muted uppercase tracking-widest mt-1">Controls active in bottom bar</div>
+                    </div>
+                </div>
+            )
+        }
 
         return (
             <div className="flex flex-col gap-2">
@@ -123,11 +163,16 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
                 <button
                     onClick={handleSwitchToFull}
                     disabled={resolving}
-                    className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-surface2 hover:bg-surface border border-border hover:border-accent/30 transition-all group w-full"
+                    className="group/btn relative flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/10 hover:border-accent/40 transition-all duration-300 w-full disabled:opacity-40"
                 >
-                    {resolving ? <Loader2 size={12} className="animate-spin text-muted" /> : <Zap size={12} className="text-accent group-hover:fill-accent" />}
-                    <span className="font-mono-custom text-[10px] text-muted group-hover:text-text uppercase tracking-wider">
-                        {resolving ? 'Searching...' : 'Play Full Song (Audio Only)'}
+                    <div className="absolute inset-0 bg-accent/10 blur-lg opacity-0 group-hover/btn:opacity-30 transition-opacity rounded-xl" />
+                    {resolving ? (
+                        <Loader2 size={12} className="animate-spin text-accent" />
+                    ) : (
+                        <Zap size={12} className="text-accent group-hover/btn:scale-110 transition-transform" />
+                    )}
+                    <span className="relative font-mono-custom text-[9px] uppercase tracking-[2px] font-bold text-accent">
+                        {resolving ? 'Resolving...' : 'Sync Full Version'}
                     </span>
                 </button>
             </div>
@@ -151,11 +196,16 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
                 <button
                     onClick={handleSwitchToFull}
                     disabled={resolving}
-                    className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-surface2 hover:bg-surface border border-border hover:border-accent/30 transition-all group w-full"
+                    className="group/btn relative flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border border-accent/20 bg-accent/5 hover:bg-accent/10 hover:border-accent/40 transition-all duration-300 w-full disabled:opacity-40"
                 >
-                    {resolving ? <Loader2 size={12} className="animate-spin text-muted" /> : <Zap size={12} className="text-accent group-hover:fill-accent" />}
-                    <span className="font-mono-custom text-[10px] text-muted group-hover:text-text uppercase tracking-wider">
-                        {resolving ? 'Searching...' : 'Play Full Song (Audio Only)'}
+                    <div className="absolute inset-0 bg-accent/10 blur-lg opacity-0 group-hover/btn:opacity-30 transition-opacity rounded-xl" />
+                    {resolving ? (
+                        <Loader2 size={12} className="animate-spin text-accent" />
+                    ) : (
+                        <Zap size={12} className="text-accent group-hover/btn:scale-110 transition-transform" />
+                    )}
+                    <span className="relative font-mono-custom text-[9px] uppercase tracking-[2px] font-bold text-accent">
+                        {resolving ? 'Resolving...' : 'Sync Full Version'}
                     </span>
                 </button>
             </div>

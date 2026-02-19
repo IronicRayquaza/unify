@@ -3,8 +3,7 @@ import { Platform } from '@/types'
 export function detectPlatform(url: string): Platform {
   const u = url.trim().toLowerCase()
   if (u.includes('spotify.com') || u.startsWith('spotify:')) return 'spotify'
-  if (u.includes('music.youtube.com')) return 'ytmusic'
-  if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube'
+  if (u.includes('youtube.com') || u.includes('music.youtube.com') || u.includes('youtu.be')) return 'youtube'
   if (u.includes('soundcloud.com') || u.includes('on.soundcloud.com')) return 'soundcloud'
   if (u.includes('music.apple.com') || u.includes('itunes.apple.com')) return 'apple'
   return 'unknown'
@@ -14,7 +13,6 @@ export function platformDisplayName(platform: Platform): string {
   const names: Record<Platform, string> = {
     spotify: 'Spotify',
     youtube: 'YouTube',
-    ytmusic: 'YouTube Music',
     soundcloud: 'SoundCloud',
     apple: 'Apple Music',
     local: 'Local File',
@@ -27,7 +25,6 @@ export function platformColor(platform: Platform): string {
   const colors: Record<Platform, string> = {
     spotify: '#1DB954',
     youtube: '#FF0000',
-    ytmusic: '#FF0000',
     soundcloud: '#ff5500',
     apple: '#fc3c44',
     local: '#818cf8',
@@ -40,7 +37,6 @@ export function platformIcon(platform: Platform): string {
   const icons: Record<Platform, string> = {
     spotify: '♪',
     youtube: '▶',
-    ytmusic: '▶',
     soundcloud: '☁',
     apple: '♫',
     local: '📁',
@@ -53,7 +49,6 @@ export function platformBgClass(platform: Platform): string {
   const classes: Record<Platform, string> = {
     spotify: 'bg-spotify/15 text-spotify',
     youtube: 'bg-youtube/15 text-youtube',
-    ytmusic: 'bg-youtube/15 text-youtube',
     soundcloud: 'bg-soundcloud/15 text-soundcloud',
     apple: 'bg-apple/15 text-apple',
     local: 'bg-indigo-400/15 text-indigo-400',
@@ -66,7 +61,6 @@ export function platformTagClass(platform: Platform): string {
   const classes: Record<Platform, string> = {
     spotify: 'bg-spotify/10 text-spotify',
     youtube: 'bg-youtube/10 text-youtube',
-    ytmusic: 'bg-youtube/10 text-youtube',
     soundcloud: 'bg-soundcloud/10 text-soundcloud',
     apple: 'bg-apple/10 text-apple',
     local: 'bg-indigo-400/10 text-indigo-400',
@@ -126,7 +120,7 @@ export function parseFallbackInfo(url: string, platform: Platform) {
   let title = 'Unknown Track'
   let artist = platformDisplayName(platform)
 
-  if (platform === 'youtube' || platform === 'ytmusic') {
+  if (platform === 'youtube') {
     const id = extractVideoId(url)
     title = id ? `${platformDisplayName(platform)} Track` : `${platformDisplayName(platform)} Video`
   }

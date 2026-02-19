@@ -12,6 +12,7 @@ import * as Slider from '@radix-ui/react-slider'
 import { extractVideoId, platformDisplayName } from '@/lib/platform'
 import { useAuth } from '@/lib/auth-context'
 import { usePlaylists } from '@/lib/playlist-context'
+import clsx from 'clsx'
 
 function formatTime(seconds: number) {
     if (!seconds || isNaN(seconds) || !isFinite(seconds)) return '0:00'
@@ -51,8 +52,7 @@ export function GlobalPlayer() {
         setVolume, toggleMute, toggleShuffle, toggleRepeat
     } = usePlayer()
 
-    const isYoutube = currentTrack?.platform === 'youtube' || currentTrack?.platform === 'ytmusic'
-    const isYoutubeMusic = currentTrack?.platform === 'ytmusic'
+    const isYoutube = currentTrack?.platform === 'youtube'
     const isSoundCloud = currentTrack?.platform === 'soundcloud'
     const isSpotify = currentTrack?.platform === 'spotify'
     const isApple = currentTrack?.platform === 'apple'
@@ -92,6 +92,30 @@ export function GlobalPlayer() {
     useEffect(() => { nextRef.current = next }, [next])
     useEffect(() => { resumeRef.current = resume }, [resume])
     useEffect(() => { pauseRef.current = pause }, [pause])
+
+    // ─── Keyboard Hotkeys ───
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't trigger if user is typing in an input or textarea
+            const target = e.target as HTMLElement
+            if (
+                target.tagName === 'INPUT' ||
+                target.tagName === 'TEXTAREA' ||
+                target.isContentEditable
+            ) {
+                return
+            }
+
+            if (e.code === 'Space') {
+                e.preventDefault() // Prevent page scrolling
+                if (isPlayingRef.current) pauseRef.current()
+                else resumeRef.current()
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [])
 
     // Cleanup on logout
     useEffect(() => {
@@ -139,8 +163,6 @@ export function GlobalPlayer() {
 
         setProgress(0)
         setDuration(0)
-        setPlayReady(false)
-        setIsBuffering(false)
         setPlayerError(null)
         if (isEmbedPlatform) setShowVideo(true)
     }, [currentTrack?.url, isEmbedPlatform, stopAllPlayers])
@@ -148,7 +170,6 @@ export function GlobalPlayer() {
     // ─── YouTube Logic ───
     const initYTPlayer = useCallback((videoId: string) => {
         if (!window.YT || !window.YT.Player) {
-            // Load script if not present
             if (!document.getElementById('youtube-sdk')) {
                 const script = document.createElement('script')
                 script.id = 'youtube-sdk'
@@ -159,26 +180,58 @@ export function GlobalPlayer() {
             return
         }
 
-        const iframe = document.getElementById('yt-player') as HTMLIFrameElement
-        if (!iframe) return
+        // Detect if player is alive and functional
+        const isPlayerHealthy = ytPlayerRef.current &&
+            typeof ytPlayerRef.current.loadVideoById === 'function' &&
+            typeof ytPlayerRef.current.getPlayerState === 'function'
 
-        // If player exists, just load new video
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+        if (isPlayerHealthy) {
             try {
-                ytPlayerRef.current.loadVideoById(videoId)
+                setPlayReady(true)
+                setIsBuffering(true) // Start buffering for the new video
+
+                // loadVideoById transitions the player to the new content.
+                // It usually autoplays. We let the onStateChange handler and
+                // our downstream sync effects take care of the specifics.
+                ytPlayerRef.current.loadVideoById({
+                    videoId: videoId,
+                    startSeconds: 0
+                })
+
+                // Force sync volume immediately
+                ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
                 return
             } catch (e) {
-                console.warn('[YouTube] Load failed, remounting...')
+                console.warn('[YouTube] Reuse failed, recreating player:', e)
+                ytPlayerRef.current = null
             }
         }
 
+        // If we need a new player, ensure the target div exists. 
+        // If the old one was an iframe, the API will handle replacing it if we provide the same ID.
+        if (!document.getElementById('yt-player')) {
+            console.error('[YouTube] Player target element not found')
+            return
+        }
+
         ytPlayerRef.current = new window.YT.Player('yt-player', {
+            videoId: videoId,
+            playerVars: {
+                autoplay: 1,
+                controls: 1,
+                modestbranding: 1,
+                rel: 0,
+                enablejsapi: 1,
+                origin: typeof window !== 'undefined' ? window.location.origin : ''
+            },
             events: {
-                onReady: () => {
+                onReady: (e: any) => {
                     setPlayReady(true)
                     setIsBuffering(false)
-                    if (isPlayingRef.current) ytPlayerRef.current.playVideo()
-                    ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                    if (isPlayingRef.current) e.target.playVideo()
+                    e.target.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                    const d = e.target.getDuration()
+                    if (d > 0) setDuration(d)
                 },
                 onStateChange: (e: any) => {
                     const state = e.data
@@ -187,13 +240,9 @@ export function GlobalPlayer() {
                         setIsBuffering(false)
                         setPlayerError(null)
                         if (!isPlayingRef.current) resumeRef.current()
-                        setDuration(ytPlayerRef.current.getDuration())
-                        clearInterval(ytIntervalRef.current)
-                        ytIntervalRef.current = setInterval(() => {
-                            if (ytPlayerRef.current?.getCurrentTime) {
-                                setProgress(ytPlayerRef.current.getCurrentTime() / ytPlayerRef.current.getDuration())
-                            }
-                        }, 1000)
+
+                        const d = e.target.getDuration()
+                        if (d > 0) setDuration(d)
                     } else if (state === 2) {
                         if (isPlayingRef.current) pauseRef.current()
                     } else if (state === 3) {
@@ -208,26 +257,62 @@ export function GlobalPlayer() {
         })
     }, [next, resume, pause])
 
+    // ─── Global Progress Sync ───
+    useEffect(() => {
+        if (!hasMounted || !isPlaying) return
+
+        let interval: any
+        if (isYoutube && ytPlayerRef.current) {
+            interval = setInterval(() => {
+                const p = ytPlayerRef.current
+                if (p && typeof p.getCurrentTime === 'function') {
+                    const state = p.getPlayerState?.()
+                    if (state === 1) { // Playing
+                        const current = p.getCurrentTime()
+                        const total = p.getDuration()
+                        if (total > 0) {
+                            setProgress(current / total)
+                            setDuration(total)
+                        }
+                    }
+                    // Occasional volume sync check
+                    if (state === 1) {
+                        p.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                    }
+                }
+            }, 500)
+        }
+
+        return () => clearInterval(interval)
+    }, [isYoutube, isPlaying, hasMounted, currentTrack?.url])
+
     useEffect(() => {
         if (isYoutube && hasMounted) {
             const videoId = extractVideoId(currentTrack?.url || '')
             if (videoId) initYTPlayer(videoId)
         }
         return () => {
+            // Only cleanup interval if any, don't destroy player
             clearInterval(ytIntervalRef.current)
-            // If the track is no longer YouTube, destroy the player
-            if (!isYoutube && ytPlayerRef.current?.destroy) {
-                ytPlayerRef.current.destroy()
-                ytPlayerRef.current = null
-            }
         }
     }, [isYoutube, currentTrack?.url, hasMounted, initYTPlayer])
 
     useEffect(() => {
-        if (!ytPlayerRef.current || !isYoutube) return
-        if (isPlaying) ytPlayerRef.current.playVideo?.()
-        else ytPlayerRef.current.pauseVideo?.()
-    }, [isPlaying, isYoutube, currentTrack?.url])
+        if (!ytPlayerRef.current || !isYoutube || !playReady) return
+        try {
+            if (isPlaying) {
+                if (typeof ytPlayerRef.current.playVideo === 'function') {
+                    ytPlayerRef.current.playVideo()
+                }
+            } else {
+                if (typeof ytPlayerRef.current.pauseVideo === 'function') {
+                    ytPlayerRef.current.pauseVideo()
+                }
+            }
+        } catch (e) {
+            console.warn('[YouTube] Sync effect failed:', e)
+        }
+    }, [isPlaying, isYoutube, playReady])
 
     useEffect(() => {
         if (!ytPlayerRef.current || !isYoutube) return
@@ -586,82 +671,88 @@ export function GlobalPlayer() {
     }, [volume, isMuted, isLocal])
 
     // Overall render guard
-    if (!currentTrack) return null
+    if (!user || !currentTrack) return null
 
     return (
         <>
             {/* Visual content container (YouTube / SoundCloud / Apple) */}
-            {isEmbedPlatform && (
-                <div className={`fixed bottom-[96px] left-6 z-40 transition-all duration-500 ease-out transform ${showVideo ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 pointer-events-none'}`}>
-                    <div className="relative group">
-                        <div className="w-[320px] h-[180px] bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center">
-                            <div className="absolute top-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    onClick={() => setShowVideo(false)}
-                                    className="p-1.5 bg-black/60 hover:bg-black/80 rounded-full text-white/70 hover:text-white transition-colors backdrop-blur-md"
-                                >
-                                    <VolumeX size={10} className="rotate-45" />
-                                </button>
+            <div className={clsx(
+                "fixed bottom-[96px] left-6 z-40 transition-all duration-500 ease-out transform",
+                (showVideo && isEmbedPlatform) || (isSpotify && playerError) ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 pointer-events-none'
+            )}>
+                <div className="relative group">
+                    <div className="w-[320px] h-[180px] bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center">
+                        <div className="absolute top-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                                onClick={() => setShowVideo(false)}
+                                className="p-1.5 bg-black/60 hover:bg-black/80 rounded-full text-white/70 hover:text-white transition-colors backdrop-blur-md"
+                            >
+                                <VolumeX size={10} className="rotate-45" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 w-full h-full relative bg-black overflow-hidden">
+                            {/* YouTube: Persistent Div (Stable container) */}
+                            <div className={clsx("w-full h-full absolute inset-0", !isYoutube && "opacity-0 pointer-events-none")}>
+                                <div id="yt-player" className="w-full h-full" />
                             </div>
 
-                            <div className="flex-1 w-full h-full relative bg-black overflow-hidden">
-                                {isYoutube && (
-                                    <iframe
-                                        id="yt-player"
-                                        src={`https://www.youtube-nocookie.com/embed/${extractVideoId(currentTrack.url)}?autoplay=1&controls=1&enablejsapi=1&rel=0&modestbranding=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
-                                        className="w-full h-full border-0"
-                                        allow="autoplay; encrypted-media; fullscreen"
-                                    />
-                                )}
+                            {/* SoundCloud: Conditionally Rendered (Safe for Iframe-only) */}
+                            {isSoundCloud && (
+                                <iframe
+                                    id="sc-iframe"
+                                    src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&visual=true`}
+                                    className="w-full h-full border-0"
+                                    allow="autoplay"
+                                />
+                            )}
 
-                                {isSoundCloud && (
-                                    <iframe
-                                        id="sc-iframe"
-                                        src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&visual=true`}
-                                        className="w-full h-full border-0"
-                                        allow="autoplay"
-                                    />
-                                )}
+                            {/* Apple: Conditionally Rendered */}
+                            {isApple && (
+                                <iframe
+                                    src={currentTrack.url.replace('music.apple.com', 'embed.music.apple.com')}
+                                    className="w-full h-full border-0"
+                                    allow="autoplay; encrypted-media; fullscreen"
+                                />
+                            )}
 
-                                {isApple && (
-                                    <iframe
-                                        src={currentTrack.url.replace('music.apple.com', 'embed.music.apple.com')}
-                                        className="w-full h-full border-0"
-                                        allow="autoplay; encrypted-media; fullscreen"
-                                    />
-                                )}
-
-                                {playerError && (
-                                    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/95 gap-3 p-4 text-center animate-fadeIn">
-                                        <div className="text-xs text-red-400 font-mono leading-relaxed max-w-[240px] font-bold">{playerError}</div>
-                                        <div className="flex flex-col gap-2 w-full max-w-[200px]">
-                                            {isYoutube && (
-                                                <button
-                                                    disabled={isCapturing}
-                                                    onClick={async (e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        await handleCaptureToLocal('audio');
-                                                    }}
-                                                    className="flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-tighter bg-accent text-bg px-4 py-3 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-accent/20 disabled:opacity-50"
-                                                >
-                                                    {isCapturing ? <Loader2 size={14} className="animate-spin" /> : <CloudDownload size={14} />}
-                                                    <span>{isCapturing ? 'Saving...' : 'Capture Audio to Library'}</span>
-                                                </button>
-                                            )}
-                                        </div>
+                            {playerError && (isSpotify || !playerError.includes('Spotify')) && (
+                                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/95 gap-3 p-4 text-center animate-fadeIn">
+                                    <div className="text-[10px] text-red-500 font-mono-custom uppercase tracking-[2px] max-w-[240px]">{playerError}</div>
+                                    <div className="flex flex-col gap-2 w-full max-w-[200px]">
+                                        {isYoutube && (
+                                            <button
+                                                disabled={isCapturing}
+                                                onClick={async (e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    await handleCaptureToLocal('audio');
+                                                }}
+                                                className="group/btn relative flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl border border-accent/30 bg-accent/5 hover:bg-accent/10 transition-all duration-300 disabled:opacity-40"
+                                            >
+                                                <div className="absolute inset-0 bg-accent/20 blur-xl opacity-0 group-hover/btn:opacity-40 transition-opacity rounded-xl" />
+                                                {isCapturing ? (
+                                                    <Loader2 size={14} className="animate-spin text-accent" />
+                                                ) : (
+                                                    <CloudDownload size={14} className="text-accent group-hover/btn:scale-110 transition-transform" />
+                                                )}
+                                                <span className="relative font-mono-custom text-[10px] uppercase tracking-[2px] font-bold text-accent">
+                                                    {isCapturing ? 'Processing...' : 'Sync to Local Library'}
+                                                </span>
+                                            </button>
+                                        )}
                                     </div>
-                                )}
-                                {captureStatus && (
-                                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 bg-accent text-bg rounded-full text-[10px] font-black uppercase tracking-widest shadow-2xl animate-bounce">
-                                        {captureStatus}
-                                    </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
+                            {captureStatus && (
+                                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] text-accent font-mono-custom text-[10px] uppercase tracking-[4px] drop-shadow-[0_0_10px_rgba(200,255,0,0.6)] animate-pulse">
+                                    {captureStatus}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
-            )}
+            </div>
 
             {/* Local audio element */}
             {isLocal && (

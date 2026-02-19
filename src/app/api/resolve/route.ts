@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // 1. YouTube & YouTube Music: use oEmbed
-    if (platform === 'youtube' || platform === 'ytmusic') {
+    if (platform === 'youtube') {
       try {
         // Normalize for oEmbed compatibility
         const embedUrl = resolvedUrl.replace('music.youtube.com', 'www.youtube.com')

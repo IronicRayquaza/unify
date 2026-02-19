@@ -39,8 +39,8 @@ export default function LandingPage() {
       </div>
 
       {/* Navbar */}
-      <nav className="relative z-10 w-full max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <nav className="relative z-[100] w-full max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push('/')}>
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent2 flex items-center justify-center">
             <svg className="w-4 h-4 text-bg" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z" />
@@ -49,12 +49,18 @@ export default function LandingPage() {
           <span className="font-display font-bold text-xl tracking-tight">UNIFY</span>
         </div>
         <div className="flex items-center gap-6">
-          <Link href="/auth/signin" className="font-mono-custom text-sm text-muted hover:text-text transition-colors">
+          <button
+            onClick={() => router.push('/auth/signin')}
+            className="font-mono-custom text-sm text-muted hover:text-accent transition-all hover:translate-y-[-1px] cursor-pointer"
+          >
             Login
-          </Link>
-          <Link href="/auth/signup" className="font-mono-custom text-sm px-5 py-2.5 rounded-full border border-border bg-surface hover:bg-surface2 transition-all">
+          </button>
+          <button
+            onClick={() => router.push('/auth/signup')}
+            className="font-mono-custom text-sm px-6 py-2.5 rounded-full border border-accent/20 bg-accent/5 text-accent hover:bg-accent/10 hover:border-accent/40 hover:shadow-lg hover:shadow-accent/10 transition-all font-bold cursor-pointer"
+          >
             Sign Up
-          </Link>
+          </button>
         </div>
       </nav>
 
@@ -128,7 +134,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="w-full max-w-7xl mx-auto px-6 py-8 border-t border-border mt-20 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="text-muted text-sm font-mono-custom">
-          © 2024 UNIFY Inc.
+          © {new Date().getFullYear()} UNIFY Inc.
         </div>
         <div className="flex items-center gap-6">
           <a href="#" className="text-muted hover:text-text transition-colors text-sm">Privacy</a>

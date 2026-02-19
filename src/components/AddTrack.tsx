@@ -17,7 +17,6 @@ interface Props {
 
 const PLATFORM_HINTS: { platform: Platform; color: string }[] = [
   { platform: 'youtube', color: '#FF0000' },
-  { platform: 'ytmusic', color: '#FF0000' },
   { platform: 'spotify', color: '#1DB954' },
   { platform: 'soundcloud', color: '#ff5500' },
   { platform: 'apple', color: '#fc3c44' },
@@ -200,7 +199,7 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
         if (res.ok) {
           const data = await res.json()
-          const fullTrack = data.results?.find((r: any) => r.platform === 'youtube' || r.platform === 'ytmusic')
+          const fullTrack = data.results?.find((r: any) => r.platform === 'youtube')
           if (fullTrack) {
             trackUrl = fullTrack.url
             finalTrackData = {
@@ -387,7 +386,7 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
                     <div className="text-sm font-bold truncate text-text group-hover:text-accent transition-colors">
                       {result.title}
                       {result.isSnippet && (
-                        <span className="ml-2 text-[8px] bg-red-500/10 text-red-400 border border-red-500/20 px-1 py-0.5 rounded uppercase font-black tracking-tighter">GO+ Preview (30s)</span>
+                        <span className="ml-2 text-[8px] text-red-400/80 font-mono-custom uppercase tracking-widest border-b border-red-400/30">PREVIEW</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -444,10 +443,8 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
       {/* Feedback */}
       {feedback && (
         <div className={clsx(
-          'mt-3 px-4 py-2.5 rounded-xl font-mono-custom text-xs border',
-          feedback.type === 'error'
-            ? 'text-red-400 bg-red-400/8 border-red-400/20'
-            : 'text-accent bg-accent/8 border-accent/20'
+          'mt-3 font-mono-custom text-[10px] uppercase tracking-[3px] font-bold text-center animate-pulse',
+          feedback.type === 'error' ? 'text-red-400' : 'text-accent drop-shadow-[0_0_8px_rgba(200,255,0,0.5)]'
         )}>
           {feedback.msg}
         </div>

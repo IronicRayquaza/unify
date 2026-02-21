@@ -54,7 +54,7 @@ export function TrackPlayer({ track, autoPlay = false }: Props) {
     }
 
     // 1. YouTube & SoundCloud (Use Native Iframes if NOT active in global player)
-    if (track.platform === 'youtube') {
+    if (track.platform === 'youtube' || track.platform === 'ytmusic') {
         if (isGlobalActive) {
             return (
                 <div className="flex flex-col items-center justify-center gap-4 py-8 bg-surface2/50 rounded-xl border border-accent/20">

@@ -52,7 +52,7 @@ export function GlobalPlayer() {
         setVolume, toggleMute, toggleShuffle, toggleRepeat
     } = usePlayer()
 
-    const isYoutube = currentTrack?.platform === 'youtube'
+    const isYoutube = currentTrack?.platform === 'youtube' || currentTrack?.platform === 'ytmusic'
     const isSoundCloud = currentTrack?.platform === 'soundcloud'
     const isSpotify = currentTrack?.platform === 'spotify'
     const isApple = currentTrack?.platform === 'apple'
@@ -677,9 +677,30 @@ export function GlobalPlayer() {
         <>
             {/* Visual content container (YouTube / SoundCloud / Apple) */}
             <div className={clsx(
-                "fixed bottom-[96px] left-6 z-40 transition-all duration-500 ease-out transform",
+                "fixed bottom-[96px] left-6 z-40 transition-all duration-500 ease-out transform flex flex-col items-start gap-3",
                 (showVideo && isEmbedPlatform) || (isSpotify && playerError) ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 pointer-events-none'
             )}>
+                {/* External Sync Button */}
+                {isYoutube && (showVideo || playerError) && (
+                    <button
+                        disabled={isCapturing}
+                        onClick={() => handleCaptureToLocal('audio')}
+                        className="group/sync flex items-center gap-2.5 px-4 py-2 rounded-full bg-surface/80 border border-accent/20 backdrop-blur-md hover:bg-accent/10 hover:border-accent/40 transition-all shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
+                    >
+                        {isCapturing ? (
+                            <Loader2 size={12} className="animate-spin text-accent" />
+                        ) : (
+                            <CloudDownload size={12} className="text-accent group-hover/sync:scale-110 transition-transform" />
+                        )}
+                        <span className="font-mono-custom text-[9px] uppercase tracking-[2px] font-bold text-accent">
+                            {isCapturing ? 'Capturing...' : 'Sync to Audio Library'}
+                        </span>
+                        {!isCapturing && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shadow-[0_0_8px_rgba(200,255,0,0.8)]" />
+                        )}
+                    </button>
+                )}
+
                 <div className="relative group">
                     <div className="w-[320px] h-[180px] bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center">
                         <div className="absolute top-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -717,30 +738,15 @@ export function GlobalPlayer() {
                             )}
 
                             {playerError && (isSpotify || !playerError.includes('Spotify')) && (
-                                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/95 gap-3 p-4 text-center animate-fadeIn">
-                                    <div className="text-[10px] text-red-500 font-mono-custom uppercase tracking-[2px] max-w-[240px]">{playerError}</div>
-                                    <div className="flex flex-col gap-2 w-full max-w-[200px]">
-                                        {isYoutube && (
-                                            <button
-                                                disabled={isCapturing}
-                                                onClick={async (e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    await handleCaptureToLocal('audio');
-                                                }}
-                                                className="group/btn relative flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl border border-accent/30 bg-accent/5 hover:bg-accent/10 transition-all duration-300 disabled:opacity-40"
-                                            >
-                                                <div className="absolute inset-0 bg-accent/20 blur-xl opacity-0 group-hover/btn:opacity-40 transition-opacity rounded-xl" />
-                                                {isCapturing ? (
-                                                    <Loader2 size={14} className="animate-spin text-accent" />
-                                                ) : (
-                                                    <CloudDownload size={14} className="text-accent group-hover/btn:scale-110 transition-transform" />
-                                                )}
-                                                <span className="relative font-mono-custom text-[10px] uppercase tracking-[2px] font-bold text-accent">
-                                                    {isCapturing ? 'Processing...' : 'Sync to Local Library'}
-                                                </span>
-                                            </button>
-                                        )}
+                                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/95 gap-4 p-4 text-center animate-fadeIn">
+                                    <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center mb-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                    </div>
+                                    <div className="text-[10px] text-red-500 font-mono-custom uppercase tracking-[2px] leading-relaxed max-w-[240px]">
+                                        {playerError}
+                                    </div>
+                                    <div className="text-[8px] text-white/30 font-mono-custom uppercase tracking-widest mt-1">
+                                        Use sync tool above to rescue
                                     </div>
                                 </div>
                             )}

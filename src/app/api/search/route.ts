@@ -12,7 +12,69 @@ export async function GET(req: NextRequest) {
     const results: any[] = []
     const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY
 
-    // 1. YouTube Search (API or Scraping)
+    // 1. YouTube Music Search (InnerTube)
+    try {
+        const payload = {
+            context: {
+                client: {
+                    clientName: "WEB_REMIX",
+                    clientVersion: "1.20231214.01.00",
+                    hl: "en",
+                    gl: "US",
+                    utcOffsetMinutes: 0
+                }
+            },
+            query: q,
+            params: "EgWKAQIIAWoKEAMQBBAJEAoQBQ==" // Filter for songs
+        }
+
+        const ytmRes = await axios.post(`https://music.youtube.com/youtubei/v1/search?key=${process.env.YOUTUBE_MUSIC_KEY || 'AIzaSyAO_FJ2nm_S8YvS6O0-t1Xyv59M'}`, payload, {
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://music.youtube.com/'
+            }
+        })
+
+        const shelves = ytmRes.data.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents
+        if (shelves) {
+            for (const shelf of shelves) {
+                const musicShelf = shelf.musicShelfRenderer
+                if (!musicShelf || !musicShelf.contents) continue
+
+                for (const item of musicShelf.contents) {
+                    const track = item.musicResponsiveListItemRenderer
+                    if (!track) continue
+
+                    const videoId = track.playlistItemData?.videoId ||
+                        track.doubleTapCommand?.watchEndpoint?.videoId ||
+                        track.navigationEndpoint?.watchEndpoint?.videoId
+
+                    if (!videoId) continue
+
+                    const flexColumns = track.flexColumns || []
+                    const title = flexColumns[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text || 'Unknown Title'
+                    const artistRuns = flexColumns[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || []
+                    const artist = artistRuns.map((r: any) => r.text).join('') || 'Unknown Artist'
+                    const thumbnails = track.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || []
+                    const thumbnail = thumbnails[thumbnails.length - 1]?.url
+
+                    results.push({
+                        id: videoId,
+                        url: `https://music.youtube.com/watch?v=${videoId}`,
+                        title,
+                        artist,
+                        thumbnail,
+                        platform: 'ytmusic'
+                    })
+                }
+            }
+        }
+    } catch (e) {
+        console.error('YouTube Music search failed:', e)
+    }
+
+    // 2. YouTube Search (API or Scraping)
     try {
         let ytTracks: any[] = []
 
@@ -78,7 +140,7 @@ export async function GET(req: NextRequest) {
         console.error('YouTube search error:', e)
     }
 
-    // 2. SoundCloud Search
+    // 3. SoundCloud Search
     try {
         const { data: mainPage } = await axios.get('https://soundcloud.com', { headers: { 'User-Agent': 'Mozilla/5.0' } })
         const scriptMatch = mainPage.match(/src="([^"]+\/assets\/[^"]+\.js)"/g)

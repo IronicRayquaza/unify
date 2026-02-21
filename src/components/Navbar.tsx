@@ -19,6 +19,7 @@ interface Props {
 const PLATFORM_COLORS: Record<string, string> = {
   spotify: '#1DB954',
   youtube: '#FF0000',
+  ytmusic: '#FF0000',
   soundcloud: '#ff5500',
   apple: '#fc3c44',
   unknown: '#6b6b88',

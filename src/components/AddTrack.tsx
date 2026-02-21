@@ -17,6 +17,7 @@ interface Props {
 
 const PLATFORM_HINTS: { platform: Platform; color: string }[] = [
   { platform: 'youtube', color: '#FF0000' },
+  { platform: 'ytmusic', color: '#FF0000' },
   { platform: 'spotify', color: '#1DB954' },
   { platform: 'soundcloud', color: '#ff5500' },
   { platform: 'apple', color: '#fc3c44' },
@@ -214,11 +215,16 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
 
       // If not snippet or fallback failed, resolve normally
       if (!finalTrackData) {
-        const res = await fetch(`/api/resolve?url=${encodeURIComponent(trackUrl)}`)
-        if (!res.ok) {
-          throw new Error(`Server responded with ${res.status}`)
+        if (typeof resultOrUrl === 'object' && !isSnippet) {
+          // Use the search result data directly
+          finalTrackData = resultOrUrl
+        } else {
+          const res = await fetch(`/api/resolve?url=${encodeURIComponent(trackUrl)}`)
+          if (!res.ok) {
+            throw new Error(`Server responded with ${res.status}`)
+          }
+          finalTrackData = await res.json()
         }
-        finalTrackData = await res.json()
       }
 
       const track: Track = {

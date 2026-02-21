@@ -36,6 +36,7 @@ type FilterType = 'all' | Platform
 const FILTERS: { label: string; value: FilterType }[] = [
   { label: 'All', value: 'all' },
   { label: 'Spotify', value: 'spotify' },
+  { label: 'YT Music', value: 'ytmusic' },
   { label: 'YouTube', value: 'youtube' },
   { label: 'SoundCloud', value: 'soundcloud' },
   { label: 'Apple Music', value: 'apple' },

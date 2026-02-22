@@ -198,6 +198,10 @@ export function GlobalPlayer() {
                     startSeconds: 0
                 })
 
+                if (isPlayingRef.current) {
+                    ytPlayerRef.current.playVideo()
+                }
+
                 // Force sync volume immediately
                 ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
                 return
@@ -255,6 +259,12 @@ export function GlobalPlayer() {
                         if (isPlayingRef.current) pauseRef.current()
                     } else if (state === 3) {
                         setIsBuffering(true)
+                    } else if (state === 5 || state === -1) {
+                        // 5 = Cued, -1 = Unstarted
+                        // If it's loaded but not playing, and we want it to be playing, force it.
+                        if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
+                            e.target.playVideo()
+                        }
                     }
                 },
                 onError: (e: any) => {
@@ -316,7 +326,7 @@ export function GlobalPlayer() {
         } catch (e) {
             console.warn('[YouTube] Sync effect failed:', e)
         }
-    }, [isPlaying, isYoutube, playReady])
+    }, [isPlaying, isYoutube, playReady, currentTrack?.url])
 
     useEffect(() => {
         if (!ytPlayerRef.current || !isYoutube) return

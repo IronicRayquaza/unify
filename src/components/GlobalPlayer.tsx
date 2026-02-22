@@ -165,7 +165,7 @@ export function GlobalPlayer() {
         setDuration(0)
         setPlayerError(null)
         if (isEmbedPlatform) setShowVideo(true)
-    }, [currentTrack?.url, isEmbedPlatform, stopAllPlayers])
+    }, [currentTrack, isEmbedPlatform, stopAllPlayers])
 
     // ─── YouTube Logic ───
     const initYTPlayer = useCallback((videoId: string) => {
@@ -263,7 +263,7 @@ export function GlobalPlayer() {
                 }
             }
         })
-    }, [next, resume, pause])
+    }, [])
 
     // ─── Global Progress Sync ───
     useEffect(() => {
@@ -298,10 +298,6 @@ export function GlobalPlayer() {
         if (isYoutube && hasMounted) {
             const videoId = extractVideoId(currentTrack?.url || '')
             if (videoId) initYTPlayer(videoId)
-        }
-        return () => {
-            // Only cleanup interval if any, don't destroy player
-            clearInterval(ytIntervalRef.current)
         }
     }, [isYoutube, currentTrack?.url, hasMounted, initYTPlayer])
 
@@ -442,7 +438,7 @@ export function GlobalPlayer() {
         })
 
         player.connect()
-    }, [pause, resume])
+    }, [])
 
     const trackChangeTimeRef = useRef<number>(0)
 

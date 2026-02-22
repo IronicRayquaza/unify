@@ -8,6 +8,7 @@ import { Plus, Loader2, X, Search, Upload } from 'lucide-react'
 import clsx from 'clsx'
 import { useSpotifyAuth } from '@/lib/spotify-auth'
 import { supabase } from '@/lib/supabase'
+import Image from 'next/image'
 
 interface Props {
   playlistId: string
@@ -382,7 +383,14 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
                   className="group flex items-center gap-3 p-2 rounded-xl bg-bg border border-border hover:border-accent/50 hover:bg-surface2 transition-all cursor-pointer"
                 >
                   {result.thumbnail ? (
-                    <img src={result.thumbnail} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                    <div className="w-10 h-10 relative flex-shrink-0">
+                      <Image
+                        src={result.thumbnail}
+                        alt={result.title}
+                        fill
+                        className="rounded-lg object-cover"
+                      />
+                    </div>
                   ) : (
                     <div className="w-10 h-10 rounded-lg bg-surface2 flex items-center justify-center text-muted font-bold text-xs uppercase">
                       {result.platform[0]}

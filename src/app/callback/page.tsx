@@ -66,6 +66,10 @@ export default function CallbackPage() {
                             localStorage.setItem('spotify_refresh_token', data.refresh_token)
                         }
 
+                        // Store expiry (data.expires_in is usually 3600)
+                        const expiryTime = Date.now() + (data.expires_in * 1000)
+                        localStorage.setItem('spotify_token_expiry', expiryTime.toString())
+
                         setStatus('Success! Redirecting...')
                         setTimeout(() => window.location.href = '/dashboard', 500)
                     } else {

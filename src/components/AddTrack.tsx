@@ -6,7 +6,7 @@ import { detectPlatform, isValidUrl, platformDisplayName } from '@/lib/platform'
 import { v4 as uuidv4 } from 'uuid'
 import { Plus, Loader2, X, Search, Upload } from 'lucide-react'
 import clsx from 'clsx'
-import { useSpotifyAuth } from '@/lib/spotify-auth'
+import { useSpotify } from '@/lib/spotify-context'
 import { supabase } from '@/lib/supabase'
 import Image from 'next/image'
 
@@ -34,7 +34,7 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
   const [filter, setFilter] = useState<Platform | 'all'>('all')
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { token: spotifyToken, login } = useSpotifyAuth()
+  const { token: spotifyToken, isConnected, login } = useSpotify()
 
   const handleClear = () => {
     setUrl('')
@@ -425,7 +425,7 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
               <div className="py-8 text-center border border-dashed border-border rounded-xl font-mono-custom text-xs text-muted">
                 No {filter} results found for this search.
 
-                {((filter === 'all' && !searchResults.some(r => r.platform === 'spotify')) || filter === 'spotify') && !spotifyToken && (
+                {((filter === 'all' && !searchResults.some(r => r.platform === 'spotify')) || filter === 'spotify') && !isConnected && (
                   <div className="mt-4 p-4 bg-spotify/5 border border-spotify/20 rounded-xl">
                     <p className="text-spotify font-bold mb-2">Want Spotify results?</p>
                     <button

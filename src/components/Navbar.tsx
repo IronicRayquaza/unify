@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Playlist } from '@/types'
 import { LogIn, LogOut, User, Music } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import { useSpotifyAuth } from '@/lib/spotify-auth'
+import { useSpotify } from '@/lib/spotify-context'
 import clsx from 'clsx'
 import Image from 'next/image'
 
@@ -27,7 +27,7 @@ const PLATFORM_COLORS: Record<string, string> = {
 
 export function Navbar({ playlist, onRename }: Props) {
   const { user, signOut } = useAuth()
-  const { token: spotifyToken, login: connectSpotify, logout: disconnectSpotify } = useSpotifyAuth()
+  const { isConnected, login: connectSpotify, logout: disconnectSpotify } = useSpotify()
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(playlist?.name ?? '')
@@ -97,7 +97,7 @@ export function Navbar({ playlist, onRename }: Props) {
         {user ? (
           <div className="flex items-center gap-3">
             {/* Spotify Connection Status */}
-            {!spotifyToken ? (
+            {!isConnected ? (
               <button
                 onClick={connectSpotify}
                 className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1DB954]/10 border border-[#1DB954]/20 text-[#1DB954] hover:bg-[#1DB954]/20 transition-all mr-2"

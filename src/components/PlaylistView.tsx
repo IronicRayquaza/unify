@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -46,9 +46,17 @@ const FILTERS: { label: string; value: FilterType }[] = [
 import { usePlayer } from '@/lib/player-context'
 
 export function PlaylistView({ playlist, onAddTrack, onRemoveTrack, onUpdateTrack, onReorderTracks }: Props) {
-  const { currentTrack, play, isPlaying } = usePlayer()
+  const { currentTrack, play, isPlaying, setQueue } = usePlayer()
   const [editingTrack, setEditingTrack] = useState<Track | null>(null)
   const [filter, setFilter] = useState<FilterType>('all')
+
+  // Sync the player queue if we're currently playing from this playlist
+  useEffect(() => {
+    if (currentTrack && playlist.tracks.some(t => t.id === currentTrack.id)) {
+      console.log('[PlaylistView] Syncing updated track list to player queue')
+      setQueue(playlist.tracks)
+    }
+  }, [playlist.tracks, currentTrack?.id, setQueue])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),

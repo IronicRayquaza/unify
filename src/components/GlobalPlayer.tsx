@@ -12,6 +12,7 @@ import * as Slider from '@radix-ui/react-slider'
 import { extractVideoId, platformDisplayName } from '@/lib/platform'
 import { useAuth } from '@/lib/auth-context'
 import { usePlaylists } from '@/lib/playlist-context'
+import { useSpotify } from '@/lib/spotify-context'
 import clsx from 'clsx'
 
 function formatTime(seconds: number) {
@@ -51,6 +52,7 @@ export function GlobalPlayer() {
         volume, isMuted, isShuffle, repeatMode,
         setVolume, toggleMute, toggleShuffle, toggleRepeat
     } = usePlayer()
+    const { token: spotifyToken } = useSpotify()
 
     const isYoutube = currentTrack?.platform === 'youtube' || currentTrack?.platform === 'ytmusic'
     const isSoundCloud = currentTrack?.platform === 'soundcloud'
@@ -187,22 +189,24 @@ export function GlobalPlayer() {
 
         if (isPlayerHealthy) {
             try {
+                console.log('[YouTube] Reusing existing player for:', videoId)
                 setPlayReady(true)
-                setIsBuffering(true) // Start buffering for the new video
+                setIsBuffering(true)
 
-                // loadVideoById transitions the player to the new content.
-                // It usually autoplays. We let the onStateChange handler and
-                // our downstream sync effects take care of the specifics.
                 ytPlayerRef.current.loadVideoById({
                     videoId: videoId,
                     startSeconds: 0
                 })
 
+                // If isPlaying is true, we want to start it immediately.
+                // However, loadVideoById usually autoplays. We force it just in case.
                 if (isPlayingRef.current) {
-                    ytPlayerRef.current.playVideo()
+                    setTimeout(() => {
+                        if (ytPlayerRef.current?.playVideo) ytPlayerRef.current.playVideo()
+                    }, 50)
                 }
 
-                // Force sync volume immediately
+                // Sync volume
                 ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
                 return
             } catch (e) {
@@ -245,8 +249,13 @@ export function GlobalPlayer() {
                 },
                 onStateChange: (e: any) => {
                     const state = e.data
-                    if (state === 0) nextRef.current(true)
-                    else if (state === 1) {
+                    console.log('[YouTube] State Change:', state)
+
+                    if (state === 0) { // ENDED
+                        console.log('[YouTube] Video Finished, calling next')
+                        setTimeout(() => nextRef.current(true), 200)
+                    }
+                    else if (state === 1) { // PLAYING
                         setIsBuffering(false)
                         setPlayerError(null)
                         if (!isPlayingRef.current) resumeRef.current()
@@ -255,12 +264,11 @@ export function GlobalPlayer() {
                             const d = e.target.getDuration()
                             if (d > 0) setDuration(d)
                         }
-                    } else if (state === 2) {
+                    } else if (state === 2) { // PAUSED
                         if (isPlayingRef.current) pauseRef.current()
-                    } else if (state === 3) {
+                    } else if (state === 3) { // BUFFERING
                         setIsBuffering(true)
-                    } else if (state === 5 || state === -1) {
-                        // 5 = Cued, -1 = Unstarted
+                    } else if (state === 5 || state === -1) { // CUED / UNSTARTED
                         // If it's loaded but not playing, and we want it to be playing, force it.
                         if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
                             e.target.playVideo()
@@ -268,8 +276,20 @@ export function GlobalPlayer() {
                     }
                 },
                 onError: (e: any) => {
-                    setPlayerError(getYouTubeErrorMessage(e.data))
+                    const msg = getYouTubeErrorMessage(e.data)
+                    setPlayerError(msg)
                     setIsBuffering(false)
+                    console.error('[YouTube] Error:', e.data, msg)
+
+                    // Auto-skip on fatal embed errors after a delay
+                    if (e.data === 150 || e.data === 101 || e.data === 100) {
+                        console.log('[YouTube] Fatal error, skipping track in 3s...')
+                        setTimeout(() => {
+                            if (currentTrack && currentTrack.platform === (isYoutube ? 'youtube' : 'ytmusic')) {
+                                nextRef.current(true)
+                            }
+                        }, 3000)
+                    }
                 }
             }
         })
@@ -314,12 +334,14 @@ export function GlobalPlayer() {
     useEffect(() => {
         if (!ytPlayerRef.current || !isYoutube || !playReady) return
         try {
+            const playerState = ytPlayerRef.current.getPlayerState?.()
             if (isPlaying) {
-                if (typeof ytPlayerRef.current.playVideo === 'function') {
+                // Only call play if not already playing/buffering to avoid loops
+                if (playerState !== 1 && playerState !== 3) {
                     ytPlayerRef.current.playVideo()
                 }
             } else {
-                if (typeof ytPlayerRef.current.pauseVideo === 'function') {
+                if (playerState === 1 || playerState === 3) {
                     ytPlayerRef.current.pauseVideo()
                 }
             }
@@ -384,12 +406,15 @@ export function GlobalPlayer() {
 
     // ─── Spotify SDK Logic ───
     const spotifyIntervalRef = useRef<any>(null)
-    const initSpotifyPlayer = useCallback((token: string) => {
+    const spotifyTokenRef = useRef(spotifyToken)
+    useEffect(() => { spotifyTokenRef.current = spotifyToken }, [spotifyToken])
+
+    const initSpotifyPlayer = useCallback((initialToken: string) => {
         if (spotifyPlayerRef.current || !window.Spotify) return
 
         const player = new window.Spotify.Player({
             name: 'UNIFY Web Player',
-            getOAuthToken: (cb: any) => cb(token),
+            getOAuthToken: (cb: any) => cb(spotifyTokenRef.current || initialToken),
             volume: isMutedRef.current ? 0 : volumeRef.current
         })
 
@@ -454,16 +479,15 @@ export function GlobalPlayer() {
 
     useEffect(() => {
         if (!hasMounted) return
-        const token = localStorage.getItem('spotify_access_token')
-        if (token) {
+        if (spotifyToken) {
             if (!window.Spotify) {
                 const script = document.createElement('script')
                 script.src = 'https://sdk.scdn.co/spotify-player.js'
                 script.async = true
                 document.body.appendChild(script)
-                window.onSpotifyWebPlaybackSDKReady = () => initSpotifyPlayer(token)
+                window.onSpotifyWebPlaybackSDKReady = () => initSpotifyPlayer(spotifyToken)
             } else {
-                initSpotifyPlayer(token)
+                initSpotifyPlayer(spotifyToken)
             }
         }
     }, [hasMounted, initSpotifyPlayer])
@@ -476,9 +500,8 @@ export function GlobalPlayer() {
 
         const playSpotifyTrack = async () => {
             if (!isSpotify || !spotifyPlayerRef.current?._deviceId) return
-            const token = localStorage.getItem('spotify_access_token')
             const trackId = currentTrack?.url.split('track/')[1]?.split('?')[0]
-            if (!trackId || !token) return
+            if (!trackId || !spotifyToken) return
 
             const attemptPlay = async (): Promise<boolean> => {
                 try {
@@ -487,7 +510,7 @@ export function GlobalPlayer() {
                         body: JSON.stringify({ uris: [`spotify:track:${trackId}`] }),
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
+                            'Authorization': `Bearer ${spotifyToken}`
                         }
                     })
 

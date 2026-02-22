@@ -60,10 +60,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const resume = useCallback(() => setIsPlaying(true), [])
 
     const next = useCallback((isAuto = false) => {
-        if (queue.length === 0) return
+        console.log('[PlayerContext] Next called:', {
+            isAuto,
+            currentIndex,
+            queueLength: queue.length,
+            repeatMode,
+            isShuffle
+        })
+
+        if (queue.length === 0) {
+            console.warn('[PlayerContext] Next called with empty queue')
+            return
+        }
 
         // Handle Repeat One (only on auto-advance)
-        if (isAuto && repeatMode === 'one') {
+        if (isAuto && repeatMode === 'one' && currentTrack) {
+            console.log('[PlayerContext] Repeating current track...')
             const track = currentTrack
             setCurrentTrack(null)
             setTimeout(() => {
@@ -88,14 +100,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             }
         }
 
-        console.log('[PlayerContext] Next called:', { isAuto, nextIdx, currentIndex, queueLength: queue.length })
-
         if (nextIdx !== -1) {
             const nextTrack = queue[nextIdx]
+            console.log('[PlayerContext] Advancing to:', nextTrack.title)
             setCurrentIndex(nextIdx)
             setCurrentTrack(nextTrack)
             setIsPlaying(true)
         } else {
+            console.log('[PlayerContext] End of queue reached')
             setIsPlaying(false)
         }
     }, [currentIndex, queue, isShuffle, repeatMode, currentTrack])
@@ -125,7 +137,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const setQueue = useCallback((tracks: Track[]) => {
         _setQueue(tracks)
-    }, [])
+        // If we are currently playing something, sync the index in the new queue
+        const currentId = currentTrack?.id
+        if (currentId) {
+            const idx = tracks.findIndex(t => t.id === currentId)
+            if (idx !== -1) {
+                console.log('[PlayerContext] Syncing currentIndex to:', idx)
+                setCurrentIndex(idx)
+            }
+        }
+    }, [currentTrack?.id])
 
     const toggleShuffle = useCallback(() => setIsShuffle(prev => !prev), [])
 

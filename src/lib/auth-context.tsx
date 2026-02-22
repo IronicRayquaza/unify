@@ -19,6 +19,8 @@ const AuthContext = createContext<AuthContextType>({
     signOut: async () => { },
 })
 
+import { toast } from 'sonner'
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
     const [session, setSession] = useState<Session | null>(null)
@@ -37,6 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const signOut = async () => {
         await supabase.auth.signOut()
+        toast.success('Signed out successfully')
         router.push('/')
     }
 

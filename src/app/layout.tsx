@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   description: 'One playlist to rule Spotify, YouTube, SoundCloud, and Apple Music',
 }
 
+import { Toaster } from 'sonner'
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -19,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <GlobalPlayer />
         </Providers>
+        <Toaster position="bottom-right" richColors expand theme="dark" />
       </body>
     </html>
   )

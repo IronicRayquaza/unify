@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft } from 'lucide-react'
 
+import { toast } from 'sonner'
+
 export default function SignInPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,8 +27,10 @@ export default function SignInPage() {
 
     if (error) {
       setError(error.message)
+      toast.error(error.message)
       setLoading(false)
     } else {
+      toast.success('Signed in successfully!')
       router.push('/dashboard')
     }
   }

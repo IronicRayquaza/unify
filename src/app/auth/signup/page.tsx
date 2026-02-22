@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft } from 'lucide-react'
 
+import { toast } from 'sonner'
+import { Mail } from 'lucide-react'
+
 export default function SignUpPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -19,7 +22,7 @@ export default function SignUpPage() {
         setLoading(true)
         setError(null)
 
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
@@ -31,16 +34,22 @@ export default function SignUpPage() {
 
         if (error) {
             setError(error.message)
+            toast.error(error.message)
             setLoading(false)
         } else {
-            // Check if email confirmation is required, usually Supabase sends one. 
-            // For now, we'll assume auto-confirm or just redirect to dashboard/check email page.
-            // But typically signUp returns a session if auto-confirm is on, or null if not.
-
-            // Let's create a playlist for the user immediately if we can, 
-            // but creating data usually requires being logged in.
-
-            router.push('/dashboard')
+            // Check if email confirmation is required
+            if (!data.session) {
+                toast.success('Verification email sent!', {
+                    description: 'Please check your inbox to verify your account.',
+                    icon: <Mail className="w-5 h-5" />,
+                    duration: 6000,
+                })
+                // Clear form or redirect to signin
+                setLoading(false)
+            } else {
+                toast.success('Account created successfully!')
+                router.push('/dashboard')
+            }
         }
     }
 

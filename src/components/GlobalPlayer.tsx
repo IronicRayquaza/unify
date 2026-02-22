@@ -228,10 +228,16 @@ export function GlobalPlayer() {
                 onReady: (e: any) => {
                     setPlayReady(true)
                     setIsBuffering(false)
-                    if (isPlayingRef.current) e.target.playVideo()
-                    e.target.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
-                    const d = e.target.getDuration()
-                    if (d > 0) setDuration(d)
+                    if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
+                        e.target.playVideo()
+                    }
+                    if (typeof e.target.setVolume === 'function') {
+                        e.target.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                    }
+                    if (typeof e.target.getDuration === 'function') {
+                        const d = e.target.getDuration()
+                        if (d > 0) setDuration(d)
+                    }
                 },
                 onStateChange: (e: any) => {
                     const state = e.data
@@ -241,8 +247,10 @@ export function GlobalPlayer() {
                         setPlayerError(null)
                         if (!isPlayingRef.current) resumeRef.current()
 
-                        const d = e.target.getDuration()
-                        if (d > 0) setDuration(d)
+                        if (typeof e.target.getDuration === 'function') {
+                            const d = e.target.getDuration()
+                            if (d > 0) setDuration(d)
+                        }
                     } else if (state === 2) {
                         if (isPlayingRef.current) pauseRef.current()
                     } else if (state === 3) {

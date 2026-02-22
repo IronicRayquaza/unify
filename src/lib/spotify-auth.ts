@@ -56,7 +56,7 @@ export function useSpotifyAuth() {
 
     const login = async () => {
         if (!CLIENT_ID) {
-            alert('Spotify Client ID is missing.')
+            alert('Spotify Client ID is missing. Please set NEXT_PUBLIC_SPOTIFY_CLIENT_ID in your environment variables (e.g., Vercel Dashboard).')
             return
         }
 

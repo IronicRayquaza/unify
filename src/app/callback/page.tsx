@@ -34,7 +34,7 @@ export default function CallbackPage() {
                 const verifier = localStorage.getItem('spotify_code_verifier')
 
                 if (!verifier || !CLIENT_ID) {
-                    setError('Refused: Missing code_verifier or client ID.')
+                    setError('Refused: Missing code_verifier or Spotify Client ID. Please ensure NEXT_PUBLIC_SPOTIFY_CLIENT_ID is set in Vercel.')
                     return
                 }
 

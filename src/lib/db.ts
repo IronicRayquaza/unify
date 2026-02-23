@@ -154,3 +154,15 @@ export async function ensureProfile(user: any) {
     }
 }
 
+export async function updateProfile(userId: string, updates: { username?: string, avatar_url?: string | null }) {
+    const { error } = await supabase
+        .from('profiles')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+
+    if (error) throw error
+}
+

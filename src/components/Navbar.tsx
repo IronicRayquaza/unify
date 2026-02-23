@@ -2,14 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Playlist } from '@/types'
 import { LogIn, LogOut, User, Music } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useSpotify } from '@/lib/spotify-context'
 import clsx from 'clsx'
 import Image from 'next/image'
-
-
 
 interface Props {
   playlist: Playlist | null
@@ -113,17 +112,30 @@ export function Navbar({ playlist, onRename }: Props) {
               </div>
             )}
 
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-surface2 border border-border flex items-center justify-center">
-                <User size={14} className="text-muted" />
+            <Link
+              href="/profile"
+              className="hidden sm:flex items-center gap-2 hover:bg-surface2 p-1 px-2 rounded-lg transition-colors cursor-pointer group"
+            >
+              <div className="w-8 h-8 rounded-full bg-surface2 border border-border flex items-center justify-center overflow-hidden">
+                {user.user_metadata?.avatar_url || user.user_metadata?.picture ? (
+                  <Image
+                    src={user.user_metadata.avatar_url || user.user_metadata.picture}
+                    alt="Profile"
+                    width={32}
+                    height={32}
+                    className="object-cover"
+                  />
+                ) : (
+                  <User size={14} className="text-muted group-hover:text-accent transition-colors" />
+                )}
               </div>
-              <span className="font-mono-custom text-xs text-muted">
-                {user.user_metadata?.display_name || user.email?.split('@')[0]}
+              <span className="font-mono-custom text-xs text-muted group-hover:text-text transition-colors">
+                {user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0]}
               </span>
-            </div>
-            {/* 
-                The signOut function from useAuth requires no arguments. 
-                However, to satisfy the event handler signature, we can wrap it in an arrow function. 
+            </Link>
+            {/*
+                The signOut function from useAuth requires no arguments.
+                However, to satisfy the event handler signature, we can wrap it in an arrow function.
                 Since signOut returns a Promise<void>, the arrow function satisfies () => void | Promise<void>.
             */}
             <button

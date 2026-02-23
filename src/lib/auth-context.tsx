@@ -10,6 +10,7 @@ interface AuthContextType {
     session: Session | null
     loading: boolean
     signOut: () => Promise<void>
+    refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
     session: null,
     loading: true,
     signOut: async () => { },
+    refreshUser: async () => { },
 })
 
 import { toast } from 'sonner'
@@ -37,6 +39,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => subscription.unsubscribe()
     }, [])
 
+    const refreshUser = async () => {
+        const { data: { user } } = await supabase.auth.getUser()
+        setUser(user)
+    }
+
     const signOut = async () => {
         await supabase.auth.signOut()
         toast.success('Signed out successfully')
@@ -44,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <AuthContext.Provider value={{ user, session, loading, signOut }}>
+        <AuthContext.Provider value={{ user, session, loading, signOut, refreshUser }}>
             {children}
         </AuthContext.Provider>
     )

@@ -34,8 +34,6 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
   const [filter, setFilter] = useState<Platform | 'all'>('all')
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { token: spotifyToken, isConnected, login } = useSpotify()
-
   const handleClear = () => {
     setUrl('')
     setDetectedPlatform(null)
@@ -72,40 +70,65 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
     }
   }
 
+  const { token: spotifyToken, isConnected, login, refreshAccessToken } = useSpotify()
+
   const handleSearch = async (query: string) => {
     setLoading(true)
     setSearchResults([])
-    setFilter('all') // Reset filter on new search
-    try {
-      // 1. YouTube & SoundCloud (from our server API)
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
-      let apiResults: ResolveResponse[] = []
-      if (res.ok) {
-        const data = await res.json()
-        apiResults = data.results || []
-      }
+    setFilter('all')
 
-      // 2. Spotify (directly from Spotify API using user token)
-      let spotifyRes: ResolveResponse[] = []
-      if (spotifyToken) {
+    try {
+      // Run searches in parallel for better performance
+      const apiPromise = fetch(`/api/search?q=${encodeURIComponent(query)}`)
+        .then(res => res.ok ? res.json() : { results: [] })
+        .catch(() => ({ results: [] }));
+
+      const spotifyPromise = (async () => {
+        if (!spotifyToken) return [];
+
         try {
-          const sResp = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=5`, {
-            headers: { 'Authorization': `Bearer ${spotifyToken}` }
+          let currentToken = spotifyToken;
+          let sResp = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=10`, {
+            headers: { 'Authorization': `Bearer ${currentToken}` }
           })
+
+          // Handle expired token with one-time retry
+          if (sResp.status === 401) {
+            console.log('[Search] Spotify token expired, attempting refresh...');
+            const newToken = await refreshAccessToken();
+            if (newToken) {
+              sResp = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=10`, {
+                headers: { 'Authorization': `Bearer ${newToken}` }
+              })
+            }
+          }
+
           if (sResp.ok) {
             const sData = await sResp.json()
-            spotifyRes = sData.tracks.items.map((item: any) => ({
+            return sData.tracks.items.map((item: any) => ({
               url: item.external_urls.spotify,
               title: item.name,
               artist: item.artists.map((a: any) => a.name).join(', '),
               thumbnail: item.album.images[0]?.url,
               platform: 'spotify'
             }))
+          } else {
+            const errData = await sResp.json().catch(() => ({}));
+            console.error(`[Spotify Search] Error ${sResp.status}:`, errData);
+
+            if (sResp.status === 403) {
+              console.warn('[Spotify Search] 403 Forbidden. This usually means the user is not in the Spotify App Whitelist (Developer Dashboard).');
+            }
+            return [];
           }
         } catch (err) {
-          console.error('Spotify Search Failed:', err)
+          console.error('[Spotify Search] Network or Parsing error:', err)
+          return [];
         }
-      }
+      })();
+
+      const [apiData, spotifyRes] = await Promise.all([apiPromise, spotifyPromise]);
+      const apiResults: ResolveResponse[] = apiData.results || [];
 
       const combined = [...spotifyRes, ...apiResults]
       setSearchResults(combined)

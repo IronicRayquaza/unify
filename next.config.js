@@ -9,7 +9,8 @@ const nextConfig = {
       'is1-ssl.mzstatic.com',
       'i.ytimg.com',
       'lh3.googleusercontent.com',
-      'yt3.ggpht.com'
+      'yt3.ggpht.com',
+      'ahunpafrqyuqmlmnzmqw.supabase.co'
     ],
   },
 }

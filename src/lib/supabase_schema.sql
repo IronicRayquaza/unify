@@ -136,3 +136,50 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- STORAGE SETUP
+-- Note: Run these to ensure buckets exist and are protected
+insert into storage.buckets (id, name, public) 
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public) 
+values ('songs', 'songs', true)
+on conflict (id) do nothing;
+
+-- Set up RLS for storage.objects
+-- Allow public access to read avatars and songs
+create policy "Public Access"
+  on storage.objects for select
+  using ( bucket_id in ('avatars', 'songs') );
+
+-- Allow authenticated users to upload to avatars bucket
+create policy "Allow Avatar Upload"
+  on storage.objects for insert
+  with check ( 
+    bucket_id = 'avatars' 
+    and auth.role() = 'authenticated' 
+  );
+
+-- Allow users to update/delete their own avatars
+create policy "Allow Avatar Update"
+  on storage.objects for update
+  using ( 
+    bucket_id = 'avatars' 
+    and auth.uid()::text = (storage.foldername(name))[1] 
+  );
+
+create policy "Allow Avatar Delete"
+  on storage.objects for delete
+  using ( 
+    bucket_id = 'avatars' 
+    and auth.uid()::text = (storage.foldername(name))[1] 
+  );
+
+-- Allow authenticated users to upload to songs bucket (for capture feature)
+create policy "Allow Song Upload"
+  on storage.objects for insert
+  with check ( 
+    bucket_id = 'songs' 
+    and auth.role() = 'authenticated' 
+  );

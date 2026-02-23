@@ -8,6 +8,9 @@ import Script from 'next/script'
 export const metadata: Metadata = {
   title: 'UNIFY — Universal Playlist',
   description: 'One playlist to rule Spotify, YouTube, SoundCloud, and Apple Music',
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 import { Toaster } from 'sonner'

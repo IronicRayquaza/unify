@@ -86,6 +86,7 @@ export function GlobalPlayer() {
     const resumeRef = useRef(resume)
     const pauseRef = useRef(pause)
     const prevPlatformRef = useRef<string | null>(null)
+    const currentTrackRef = useRef(currentTrack)
 
     useEffect(() => { setHasMounted(true) }, [])
     useEffect(() => { isPlayingRef.current = isPlaying }, [isPlaying])
@@ -94,31 +95,9 @@ export function GlobalPlayer() {
     useEffect(() => { nextRef.current = next }, [next])
     useEffect(() => { resumeRef.current = resume }, [resume])
     useEffect(() => { pauseRef.current = pause }, [pause])
+    useEffect(() => { currentTrackRef.current = currentTrack }, [currentTrack])
 
-    // ─── Keyboard Hotkeys ───
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Don't trigger if user is typing in an input or textarea
-            const target = e.target as HTMLElement
-            if (
-                target.tagName === 'INPUT' ||
-                target.tagName === 'TEXTAREA' ||
-                target.isContentEditable
-            ) {
-                return
-            }
-
-            if (e.code === 'Space') {
-                e.preventDefault() // Prevent page scrolling
-                if (isPlayingRef.current) pauseRef.current()
-                else resumeRef.current()
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [])
-
+    // ... (keyboard hotkeys) ...
     // Cleanup on logout
     useEffect(() => {
         if (!user && isPlaying) {
@@ -128,6 +107,7 @@ export function GlobalPlayer() {
 
     // ─── Global Stops & Resets ───
     const stopAllPlayers = useCallback(() => {
+        console.log('[GlobalPlayer] Stop all players triggered')
         // 1. YouTube
         try {
             if (ytPlayerRef.current?.pauseVideo) ytPlayerRef.current.pauseVideo()
@@ -154,7 +134,19 @@ export function GlobalPlayer() {
 
     // Reset on track change
     useEffect(() => {
-        if (!currentTrack) return
+        const now = Date.now()
+        trackChangeTimeRef.current = now // Update transition timer for ALL changes
+
+        // If track becomes null (transitioning), stop all players immediately
+        if (!currentTrack) {
+            stopAllPlayers()
+            lastSpotifyIdRef.current = null // Clear stale ID
+            prevPlatformRef.current = null // CRITICAL: Stop Spotify listener from reacting
+            setProgress(0)
+            setDuration(0)
+            setPlayerError(null)
+            return
+        }
 
         const currentPlatform = currentTrack.platform
         // If switching platforms, stop the previous one to avoid overlap
@@ -404,10 +396,12 @@ export function GlobalPlayer() {
         }
     }
 
-    // ─── Spotify SDK Logic ───
     const spotifyIntervalRef = useRef<any>(null)
     const spotifyTokenRef = useRef(spotifyToken)
     useEffect(() => { spotifyTokenRef.current = spotifyToken }, [spotifyToken])
+
+    const lastSpotifyIdRef = useRef<string | null>(null)
+    const lastNextActionTimeRef = useRef<number>(0)
 
     const initSpotifyPlayer = useCallback((initialToken: string) => {
         if (spotifyPlayerRef.current || !window.Spotify) return
@@ -428,35 +422,50 @@ export function GlobalPlayer() {
         player.addListener('player_state_changed', (state: any) => {
             if (!state) return
 
+            const now = Date.now()
+            const timeSinceChange = now - trackChangeTimeRef.current
+            const isTransiting = timeSinceChange < 2000
+
+            // CRITICAL: Only process Spotify events if we are actually ON the Spotify platform
+            // This prevents "Autoplay" or background Spotify activity from hijacking the UI
+            if (currentTrackRef.current?.platform !== 'spotify') {
+                if (!state.paused && !isTransiting) {
+                    player.pause()
+                }
+                return
+            }
+
+            const currentTrackData = state.track_window?.current_track
+            const trackId = currentTrackData?.id
+
             // 1. Sync Play/Pause State
             const isPaused = state.paused
 
-            // IGNORE SDK-originated pause events for a short window during track switch.
-            // This prevents the gap between "API call" and "SDK loading" from pausing our UI.
-            const now = Date.now()
-            const timeSinceChange = now - (trackChangeTimeRef.current || 0)
-            const isTransiting = timeSinceChange < 2000
-
             if (isPaused) {
-                // Only pause our UI if we aren't in the middle of a track change
                 if (!isTransiting && isPlayingRef.current) pauseRef.current()
             } else {
-                // If the SDK says it's playing, ensure our UI matches
                 if (!isPlayingRef.current) resumeRef.current()
             }
 
-            // 2. Sync Duration & Metadata
+            // 2. Sync Duration & Progress
             setDuration(state.duration / 1000)
 
-            // 3. Handle Track Completion (Auto-Advance)
-            // If we are at the end, and it's paused, move to next
-            if (state.position === 0 && state.paused && state.repeat_mode === 0) {
-                // This state often hits when a song finishes naturally
-                // but we check if we were just playing it
-                if (isPlayingRef.current) nextRef.current(true)
+            // 4. Update track ID ref to detect internal changes
+            const trackIdFromSDK = state.track_window?.current_track?.id
+            const expectedTrackId = currentTrackRef.current?.url.split('track/')[1]?.split('?')[0]
+            const isEndOfTrack = state.position === 0 && isPaused && state.repeat_mode === 0
+
+            if (isEndOfTrack && isPlayingRef.current && !isTransiting) {
+                if (trackIdFromSDK === expectedTrackId) {
+                    const timeSinceLastNext = now - lastNextActionTimeRef.current
+                    if (timeSinceLastNext > 2000) {
+                        lastNextActionTimeRef.current = now
+                        nextRef.current(true)
+                    }
+                }
             }
 
-            // 4. Real-time Progress Tracking
+            // 5. Real-time Progress Tracking
             clearInterval(spotifyIntervalRef.current)
             if (!isPaused) {
                 spotifyIntervalRef.current = setInterval(() => {

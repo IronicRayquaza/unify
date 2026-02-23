@@ -1,7 +1,7 @@
 
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { Track } from '@/types'
 
 type RepeatMode = 'off' | 'all' | 'one'
@@ -59,58 +59,72 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const pause = useCallback(() => setIsPlaying(false), [])
     const resume = useCallback(() => setIsPlaying(true), [])
 
+    const lastActionTimeRef = useRef(0)
+
     const next = useCallback((isAuto = false) => {
-        console.log('[PlayerContext] Next called:', {
-            isAuto,
-            currentIndex,
-            queueLength: queue.length,
-            repeatMode,
-            isShuffle
-        })
-
-        if (queue.length === 0) {
-            console.warn('[PlayerContext] Next called with empty queue')
+        const now = Date.now()
+        if (now - lastActionTimeRef.current < 2000) {
+            console.log('[PlayerContext] Throttle: Skipping rapidly repeated next() call')
             return
         }
+        lastActionTimeRef.current = now
 
-        // Handle Repeat One (only on auto-advance)
-        if (isAuto && repeatMode === 'one' && currentTrack) {
-            console.log('[PlayerContext] Repeating current track...')
-            const track = currentTrack
-            setCurrentTrack(null)
-            setTimeout(() => {
-                setCurrentTrack(track)
+        if (queue.length === 0) return
+
+        // Capture current state to avoid closure issues during transition
+        const prevTrack = currentTrack
+        const q = [...queue]
+        const s = isShuffle
+        const r = repeatMode
+
+        const performNext = () => {
+            let currentIdx = -1
+            if (prevTrack) {
+                currentIdx = q.findIndex(t => t.id === prevTrack.id)
+            }
+
+            if (isAuto && r === 'one' && prevTrack) {
+                setCurrentTrack(null)
+                setTimeout(() => {
+                    setCurrentTrack(prevTrack)
+                    setIsPlaying(true)
+                }, 50)
+                return
+            }
+
+            let nextIdx = -1
+            if (s) {
+                nextIdx = Math.floor(Math.random() * q.length)
+                if (q.length > 1 && nextIdx === currentIdx) {
+                    nextIdx = (nextIdx + 1) % q.length
+                }
+            } else {
+                if (currentIdx < q.length - 1) {
+                    nextIdx = currentIdx + 1
+                } else if (r === 'all') {
+                    nextIdx = 0
+                }
+            }
+
+            if (nextIdx !== -1) {
+                const nextTrack = q[nextIdx]
+                console.log('[PlayerContext] Advancing to:', nextTrack.title)
+                setCurrentIndex(nextIdx)
+                setCurrentTrack(nextTrack)
                 setIsPlaying(true)
-            }, 50)
-            return
-        }
-
-        let nextIdx = -1
-
-        if (isShuffle) {
-            nextIdx = Math.floor(Math.random() * queue.length)
-            if (queue.length > 1 && nextIdx === currentIndex) {
-                nextIdx = (nextIdx + 1) % queue.length
-            }
-        } else {
-            if (currentIndex < queue.length - 1) {
-                nextIdx = currentIndex + 1
-            } else if (repeatMode === 'all') {
-                nextIdx = 0
+            } else {
+                console.log('[PlayerContext] End of queue reached')
+                setIsPlaying(false)
             }
         }
 
-        if (nextIdx !== -1) {
-            const nextTrack = queue[nextIdx]
-            console.log('[PlayerContext] Advancing to:', nextTrack.title)
-            setCurrentIndex(nextIdx)
-            setCurrentTrack(nextTrack)
-            setIsPlaying(true)
+        setCurrentTrack(null)
+        if (isAuto) {
+            setTimeout(performNext, 100)
         } else {
-            console.log('[PlayerContext] End of queue reached')
-            setIsPlaying(false)
+            performNext()
         }
-    }, [currentIndex, queue, isShuffle, repeatMode, currentTrack])
+    }, [queue, isShuffle, repeatMode, currentTrack])
 
     const prev = useCallback(() => {
         if (queue.length === 0) return

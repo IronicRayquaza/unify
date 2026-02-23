@@ -106,23 +106,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 }
             }
 
-            if (nextIdx !== -1) {
+            if (nextIdx !== -1 && nextIdx < q.length) {
                 const nextTrack = q[nextIdx]
-                console.log('[PlayerContext] Advancing to:', nextTrack.title)
+                console.log('[PlayerContext] Advancing to:', nextTrack.title, 'at index:', nextIdx)
                 setCurrentIndex(nextIdx)
                 setCurrentTrack(nextTrack)
                 setIsPlaying(true)
             } else {
-                console.log('[PlayerContext] End of queue reached')
+                console.log('[PlayerContext] End of queue reached or invalid index')
                 if (isAuto) setIsPlaying(false)
             }
         }
 
-        if (isAuto) {
-            setTimeout(performNext, 100)
-        } else {
-            performNext()
-        }
+        setCurrentTrack(null)
+        setTimeout(performNext, 100)
     }, [queue, isShuffle, repeatMode, currentTrack])
 
     const prev = useCallback(() => {

@@ -106,30 +106,38 @@ export function GlobalPlayer() {
     }, [user, isPlaying, pause])
 
     // ─── Global Stops & Resets ───
-    const stopAllPlayers = useCallback(() => {
-        console.log('[GlobalPlayer] Stop all players triggered')
+    const stopAllPlayers = useCallback((exclude?: string) => {
+        console.log('[GlobalPlayer] Stop all players triggered, exclude:', exclude)
+
         // 1. YouTube
-        try {
-            if (ytPlayerRef.current?.pauseVideo) ytPlayerRef.current.pauseVideo()
-        } catch (e) { }
+        if (exclude !== 'youtube' && exclude !== 'ytmusic') {
+            try {
+                if (ytPlayerRef.current?.pauseVideo) ytPlayerRef.current.pauseVideo()
+            } catch (e) { }
+        }
 
         // 2. SoundCloud
-        try {
-            if (scWidgetRef.current?.pause) scWidgetRef.current.pause()
-        } catch (e) { }
+        if (exclude !== 'soundcloud') {
+            try {
+                if (scWidgetRef.current?.pause) scWidgetRef.current.pause()
+            } catch (e) { }
+        }
 
         // 3. Spotify
-        try {
-            if (spotifyPlayerRef.current?.pause) spotifyPlayerRef.current.pause()
-        } catch (e) { }
+        if (exclude !== 'spotify') {
+            try {
+                if (spotifyPlayerRef.current?.pause) spotifyPlayerRef.current.pause()
+            } catch (e) { }
+        }
 
         // 4. Local
-        try {
+        if (exclude !== 'local') {
             if (localAudioRef.current) {
                 localAudioRef.current.pause()
                 localAudioRef.current.currentTime = 0
+                localAudioRef.current.load() // Force immediate drop of old stream
             }
-        } catch (e) { }
+        }
     }, [])
 
     // Reset on track change
@@ -149,26 +157,26 @@ export function GlobalPlayer() {
         }
 
         const currentPlatform = currentTrack.platform
-        // If switching platforms, stop the previous one to avoid overlap
-        if (prevPlatformRef.current && prevPlatformRef.current !== currentPlatform) {
+        const isPlatformChanging = prevPlatformRef.current !== currentPlatform
+
+        // For same-platform local skips, we NEED a full stop to clear the audio engine.
+        // For other platforms (like YouTube), same-platform reuse is handled internally by their SDKs.
+        if (!isPlatformChanging && currentPlatform === 'local') {
             stopAllPlayers()
+        } else {
+            stopAllPlayers(currentPlatform)
         }
+
         prevPlatformRef.current = currentPlatform
 
         setProgress(0)
         setDuration(0)
         setPlayerError(null)
 
-        // Reset state for new track
-        const isPlatformChanging = prevPlatformRef.current !== currentPlatform
-        // For YouTube/Spotify/SoundCloud, we reset for better sync.
-        // For Local, we keep it true so the button doesn't lock up.
-        if (isPlatformChanging || isSpotify || isSoundCloud) {
+        // Reset ready state so loader shows up
+        if (isPlatformChanging || isSpotify || isSoundCloud || isLocal) {
             setPlayReady(false)
             setIsBuffering(true)
-        } else if (isLocal) {
-            setPlayReady(true)
-            setIsBuffering(false)
         }
 
         if (isEmbedPlatform) setShowVideo(true)
@@ -700,32 +708,54 @@ export function GlobalPlayer() {
     }, [volume, isMuted, isSoundCloud])
 
     // ─── Local Music Logic ───
+    // 1. URL Change: Force a hard reload of the audio engine
+    useEffect(() => {
+        if (!localAudioRef.current || !isLocal || !currentTrack?.url) return
+        const audio = localAudioRef.current
+
+        console.log('[LocalPlayer] Loading new local source:', currentTrack.url)
+        audio.load() // Force the browser to drop the old stream
+
+        if (isPlaying) {
+            audio.play().catch(err => {
+                if (err.name !== 'AbortError') console.warn('[LocalPlayer] URL change play failed:', err)
+            })
+        }
+    }, [currentTrack?.url, isLocal])
+
+    // 2. Play/Pause/Volume Sync
     useEffect(() => {
         if (!localAudioRef.current || !isLocal) return
-
         const audio = localAudioRef.current
         audio.volume = isMuted ? 0 : volume
 
         if (isPlaying) {
-            audio.play().catch(() => { })
+            if (audio.paused) {
+                audio.play().catch(err => {
+                    if (err.name !== 'AbortError') console.warn('[LocalPlayer] Sync play failed:', err)
+                })
+            }
         } else {
-            audio.pause()
+            if (!audio.paused) audio.pause()
         }
-    }, [isPlaying, isLocal, playReady, currentTrack?.url, volume, isMuted])
+    }, [isPlaying, isLocal, volume, isMuted])
 
 
-    // Overall render guard
-    if (!user || !currentTrack) return null
+    // Overall render guard: Keep mounted as long as user is logged in
+    // This prevents destroying the YouTube iframe during 100ms transitions
+    if (!user) return null
+
+    const hasTrack = !!currentTrack
 
     return (
         <>
             {/* Visual content container (YouTube / SoundCloud / Apple) */}
             <div className={clsx(
                 "fixed bottom-[96px] left-6 z-40 transition-all duration-500 ease-out transform flex flex-col items-start gap-3",
-                (showVideo && isEmbedPlatform) || (isSpotify && playerError) ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 pointer-events-none'
+                hasTrack && ((showVideo && isEmbedPlatform) || (isSpotify && playerError)) ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 pointer-events-none'
             )}>
                 {/* External Sync Button */}
-                {isYoutube && (showVideo || playerError) && (
+                {hasTrack && isYoutube && (showVideo || playerError) && (
                     <button
                         disabled={isCapturing}
                         onClick={() => handleCaptureToLocal('audio')}
@@ -804,12 +834,13 @@ export function GlobalPlayer() {
                 </div>
             </div>
 
-            {/* Local audio element */}
-            {isLocal && (
+            {/* Local audio element - Persistent source management */}
+            {isLocal && currentTrack && (
                 <audio
                     ref={localAudioRef}
                     src={currentTrack.url}
                     preload="auto"
+                    autoPlay={isPlaying} // Native Handoff
                     onEnded={() => nextRef.current(true)}
                     onTimeUpdate={(e) => {
                         const a = e.currentTarget
@@ -824,22 +855,28 @@ export function GlobalPlayer() {
                     }}
                     onWaiting={() => setIsBuffering(true)}
                     onPlaying={() => setIsBuffering(false)}
-                    onError={() => setPlayerError('Failed to load local audio file.')}
+                    onError={(e) => {
+                        console.error('[LocalPlayer] Audio Error:', e)
+                        setPlayerError('Failed to load local audio file.')
+                    }}
                 />
             )}
 
             {/* Player bar */}
-            <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-t border-border p-4 z-50 animate-slideUp">
+            <div className={clsx(
+                "fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-t border-border p-4 z-50 transition-transform duration-500",
+                hasTrack ? "translate-y-0" : "translate-y-full"
+            )}>
                 <div className="max-w-7xl mx-auto flex items-center justify-between gap-8">
                     {/* Track Info */}
                     <div className="flex items-center gap-4 w-1/4 min-w-0">
                         <div className="w-14 h-14 rounded-lg bg-surface2 border border-border overflow-hidden relative flex-shrink-0 group">
-                            {currentTrack.thumbnail ? (
-                                <Image src={currentTrack.thumbnail} alt={currentTrack.title} fill className="object-cover" />
+                            {currentTrack?.thumbnail ? (
+                                <Image src={currentTrack.thumbnail} alt={currentTrack.title || 'Track'} fill className="object-cover" />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-muted"><Music2 size={24} /></div>
                             )}
-                            {isEmbedPlatform && (
+                            {hasTrack && isEmbedPlatform && (
                                 <button
                                     onClick={() => setShowVideo(!showVideo)}
                                     className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]"
@@ -850,13 +887,15 @@ export function GlobalPlayer() {
                             )}
                         </div>
                         <div className="min-w-0">
-                            <h4 className="font-bold text-sm truncate text-text">{currentTrack.title}</h4>
-                            <p className="text-xs text-muted truncate mt-0.5">{currentTrack.artist}</p>
-                            <div className="flex items-center gap-1.5 mt-1">
-                                <span className="px-1.5 py-0.5 rounded-md bg-surface2 text-[9px] font-black uppercase tracking-wider text-muted border border-border">
-                                    {platformDisplayName(currentTrack.platform)}
-                                </span>
-                            </div>
+                            <h4 className="font-bold text-sm truncate text-text">{currentTrack?.title || 'No track selected'}</h4>
+                            <p className="text-xs text-muted truncate mt-0.5">{currentTrack?.artist || 'Unknown Artist'}</p>
+                            {hasTrack && (
+                                <div className="flex items-center gap-1.5 mt-1">
+                                    <span className="px-1.5 py-0.5 rounded-md bg-surface2 text-[9px] font-black uppercase tracking-wider text-muted border border-border">
+                                        {platformDisplayName(currentTrack.platform)}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -874,7 +913,15 @@ export function GlobalPlayer() {
                             >
                                 {isBuffering ? <Loader2 size={22} className="animate-spin" /> : isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="ml-1" />}
                             </button>
-                            <button onClick={() => next()} className="text-muted hover:text-text transition-colors"><SkipForward size={22} fill="currentColor" /></button>
+                            <button
+                                onClick={() => {
+                                    console.log('[GlobalPlayer] Manual Next Clicked')
+                                    next()
+                                }}
+                                className="text-muted hover:text-text transition-colors"
+                            >
+                                <SkipForward size={22} fill="currentColor" />
+                            </button>
                             <button onClick={toggleRepeat} className={`transition-colors ${repeatMode !== 'off' ? 'text-accent' : 'text-muted hover:text-text'}`} title="Repeat">
                                 {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
                             </button>

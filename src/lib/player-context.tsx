@@ -63,7 +63,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const next = useCallback((isAuto = false) => {
         const now = Date.now()
-        if (now - lastActionTimeRef.current < 2000) {
+        if (now - lastActionTimeRef.current < 1000) {
             console.log('[PlayerContext] Throttle: Skipping rapidly repeated next() call')
             return
         }
@@ -114,11 +114,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 setIsPlaying(true)
             } else {
                 console.log('[PlayerContext] End of queue reached')
-                setIsPlaying(false)
+                if (isAuto) setIsPlaying(false)
             }
         }
 
-        setCurrentTrack(null)
         if (isAuto) {
             setTimeout(performNext, 100)
         } else {

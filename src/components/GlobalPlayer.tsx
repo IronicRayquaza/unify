@@ -158,8 +158,21 @@ export function GlobalPlayer() {
         setProgress(0)
         setDuration(0)
         setPlayerError(null)
+
+        // Reset state for new track
+        const isPlatformChanging = prevPlatformRef.current !== currentPlatform
+        // For YouTube/Spotify/SoundCloud, we reset for better sync.
+        // For Local, we keep it true so the button doesn't lock up.
+        if (isPlatformChanging || isSpotify || isSoundCloud) {
+            setPlayReady(false)
+            setIsBuffering(true)
+        } else if (isLocal) {
+            setPlayReady(true)
+            setIsBuffering(false)
+        }
+
         if (isEmbedPlatform) setShowVideo(true)
-    }, [currentTrack, isEmbedPlatform, stopAllPlayers])
+    }, [currentTrack, isEmbedPlatform, isLocal, isSpotify, isSoundCloud, stopAllPlayers])
 
     // ─── YouTube Logic ───
     const initYTPlayer = useCallback((videoId: string) => {
@@ -193,9 +206,7 @@ export function GlobalPlayer() {
                 // If isPlaying is true, we want to start it immediately.
                 // However, loadVideoById usually autoplays. We force it just in case.
                 if (isPlayingRef.current) {
-                    setTimeout(() => {
-                        if (ytPlayerRef.current?.playVideo) ytPlayerRef.current.playVideo()
-                    }, 50)
+                    if (ytPlayerRef.current?.playVideo) ytPlayerRef.current.playVideo()
                 }
 
                 // Sync volume
@@ -693,28 +704,15 @@ export function GlobalPlayer() {
         if (!localAudioRef.current || !isLocal) return
 
         const audio = localAudioRef.current
+        audio.volume = isMuted ? 0 : volume
 
         if (isPlaying) {
-            const playAudio = async () => {
-                try {
-                    // Use a slightly more robust check to avoid redundant loads
-                    if (audio.paused || audio.src !== currentTrack?.url) {
-                        await audio.play()
-                    }
-                } catch (err) {
-                    console.warn('[LocalPlayer] Play failed (common on first load):', err)
-                }
-            }
-            playAudio()
+            audio.play().catch(() => { })
         } else {
             audio.pause()
         }
-    }, [isPlaying, isLocal, currentTrack?.url])
+    }, [isPlaying, isLocal, playReady, currentTrack?.url, volume, isMuted])
 
-    useEffect(() => {
-        if (!localAudioRef.current || !isLocal) return
-        localAudioRef.current.volume = isMuted ? 0 : volume
-    }, [volume, isMuted, isLocal])
 
     // Overall render guard
     if (!user || !currentTrack) return null
@@ -817,8 +815,15 @@ export function GlobalPlayer() {
                         const a = e.currentTarget
                         if (a.duration) { setProgress(a.currentTime / a.duration); setDuration(a.duration) }
                     }}
-                    onCanPlay={() => { setIsBuffering(false); setPlayReady(true) }}
+                    onCanPlay={(e) => {
+                        setIsBuffering(false)
+                        setPlayReady(true)
+                        if (isPlayingRef.current) {
+                            e.currentTarget.play().catch(() => { })
+                        }
+                    }}
                     onWaiting={() => setIsBuffering(true)}
+                    onPlaying={() => setIsBuffering(false)}
                     onError={() => setPlayerError('Failed to load local audio file.')}
                 />
             )}
@@ -869,7 +874,7 @@ export function GlobalPlayer() {
                             >
                                 {isBuffering ? <Loader2 size={22} className="animate-spin" /> : isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="ml-1" />}
                             </button>
-                            <button onClick={() => next(true)} className="text-muted hover:text-text transition-colors"><SkipForward size={22} fill="currentColor" /></button>
+                            <button onClick={() => next()} className="text-muted hover:text-text transition-colors"><SkipForward size={22} fill="currentColor" /></button>
                             <button onClick={toggleRepeat} className={`transition-colors ${repeatMode !== 'off' ? 'text-accent' : 'text-muted hover:text-text'}`} title="Repeat">
                                 {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
                             </button>

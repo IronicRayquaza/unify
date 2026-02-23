@@ -146,7 +146,7 @@ export default function ProfilePage() {
                 <div className="absolute bottom-0 left-0 w-[500px] h-[500px] rounded-full blur-[120px] bg-accent2/5" />
             </div>
 
-            <main className="max-w-2xl mx-auto px-6 py-12">
+            <main className="max-w-2xl mx-auto px-6 py-12 pb-32">
                 <Link
                     href="/dashboard"
                     className="inline-flex items-center gap-2 text-muted hover:text-text transition-colors mb-12 group"

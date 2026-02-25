@@ -68,6 +68,7 @@ export function GlobalPlayer() {
     const [playReady, setPlayReady] = useState(false)
     const [showVideo, setShowVideo] = useState(true)
     const [hasMounted, setHasMounted] = useState(false)
+    const [isSeeking, setIsSeeking] = useState(false)
 
     const localAudioRef = useRef<HTMLAudioElement>(null)
     const ytPlayerRef = useRef<any>(null)
@@ -224,6 +225,9 @@ export function GlobalPlayer() {
 
                 // Sync volume
                 ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+
+                // Track the change time to help interval ignore stale duration/time
+                trackChangeTimeRef.current = Date.now()
                 return
             } catch (e) {
                 console.warn('[YouTube] Reuse failed, recreating player:', e)
@@ -246,6 +250,7 @@ export function GlobalPlayer() {
                 modestbranding: 1,
                 rel: 0,
                 enablejsapi: 1,
+                playsinline: 1, // Mandatory for mobile background/inline play
                 origin: typeof window !== 'undefined' ? window.location.origin : ''
             },
             events: {
@@ -262,6 +267,8 @@ export function GlobalPlayer() {
                         const d = e.target.getDuration()
                         if (d > 0) setDuration(d)
                     }
+                    // Signal track change time for onReady too
+                    trackChangeTimeRef.current = Date.now()
                 },
                 onStateChange: (e: any) => {
                     const state = e.data
@@ -281,7 +288,19 @@ export function GlobalPlayer() {
                             if (d > 0) setDuration(d)
                         }
                     } else if (state === 2) { // PAUSED
-                        if (isPlayingRef.current) pauseRef.current()
+                        // CRITICAL FOR BACKGROUND PLAY: 
+                        // If we hit a paused state but our intent is STILL to play (isPlayingRef.current is true),
+                        // we DO NOT call pauseRef.current(). Calling it would sync the 'Paused' state 
+                        // globally and break our watchdog recovery. 
+                        // Instead, we let the watchdog (in Global Progress Sync) try to resume it.
+                        console.log('[YouTube] State 2 (Paused) detected. isPlaying intent:', isPlayingRef.current)
+
+                        // We only sync back to global pause if the user is actually on the page 
+                        // and we want to allow external control (like media keys).
+                        // However, for mobile/backgrounding, it's safer to trust our internal state.
+                        if (!isPlayingRef.current) {
+                            pauseRef.current()
+                        }
                     } else if (state === 3) { // BUFFERING
                         setIsBuffering(true)
                     } else if (state === 5 || state === -1) { // CUED / UNSTARTED
@@ -314,7 +333,7 @@ export function GlobalPlayer() {
     // ─── Global Progress Sync ───
     useEffect(() => {
         if (!hasMounted) return
-        // Run interval if playing OR if we don't have a duration yet
+        // If not playing and we already have a duration, we don't need to sync
         if (!isPlaying && duration > 0) return
 
         let interval: any
@@ -322,15 +341,33 @@ export function GlobalPlayer() {
             interval = setInterval(() => {
                 const p = ytPlayerRef.current
                 if (p && typeof p.getCurrentTime === 'function' && typeof p.getDuration === 'function') {
+                    // --- STALE DATA PROTECTION ---
+                    const timeSinceChange = Date.now() - trackChangeTimeRef.current
                     const state = p.getPlayerState?.()
+
+                    // Don't sync if we just changed tracks (< 2s) unless actually playing
+                    if (timeSinceChange < 2000 && state !== 1) return
+
                     const current = p.getCurrentTime()
                     const total = p.getDuration()
 
                     if (total > 0) {
-                        setDuration(total)
-                        // Only update progress if playing to avoid slider jumping back
-                        if (state === 1) {
+                        setDuration(Math.floor(total))
+                        // Only update progress if playing AND NOT currently seeking/dragging
+                        if (state === 1 && !isSeeking) {
                             setProgress(current / total)
+                        }
+
+                        // --- AUTO-PLAY RECOVERY ---
+                        // If we should be playing but we are stuck in unstarted (-1), cued (5), or paused (2)
+                        // This handles first-play blocks and transient stalls.
+                        if (isPlayingRef.current && (state === -1 || state === 5 || state === 2)) {
+                            const timeSinceChange = Date.now() - trackChangeTimeRef.current
+                            // Give it at least 1s to load before forcing
+                            if (timeSinceChange > 1000) {
+                                console.log('[YouTube] Recovery: Forcing play state...')
+                                p.playVideo?.()
+                            }
                         }
 
                         // --- BACKGROUND WATCHDOG ---
@@ -355,7 +392,7 @@ export function GlobalPlayer() {
         }
 
         return () => clearInterval(interval)
-    }, [isYoutube, isPlaying, hasMounted, currentTrack?.url])
+    }, [isYoutube, isPlaying, hasMounted, currentTrack?.url, playReady])
 
     useEffect(() => {
         if (isYoutube && hasMounted) {
@@ -777,6 +814,37 @@ export function GlobalPlayer() {
     }, [isPlaying, isLocal, volume, isMuted])
 
 
+    // ─── MediaSession API (Background Controls & Metadata) ───
+    useEffect(() => {
+        if (!hasMounted || !('mediaSession' in navigator)) return
+
+        if (currentTrack) {
+            navigator.mediaSession.metadata = new window.MediaMetadata({
+                title: currentTrack.title || 'Unknown Title',
+                artist: currentTrack.artist || 'Unknown Artist',
+                album: 'Unify Library',
+                artwork: currentTrack.thumbnail ? [{ src: currentTrack.thumbnail, sizes: '512x512', type: 'image/jpeg' }] : []
+            })
+        }
+
+        navigator.mediaSession.setActionHandler('play', () => resume())
+        navigator.mediaSession.setActionHandler('pause', () => pause())
+        navigator.mediaSession.setActionHandler('previoustrack', () => prev())
+        navigator.mediaSession.setActionHandler('nexttrack', () => next())
+
+        return () => {
+            navigator.mediaSession.setActionHandler('play', null)
+            navigator.mediaSession.setActionHandler('pause', null)
+            navigator.mediaSession.setActionHandler('previoustrack', null)
+            navigator.mediaSession.setActionHandler('nexttrack', null)
+        }
+    }, [currentTrack, hasMounted, resume, pause, next, prev])
+
+    useEffect(() => {
+        if (!('mediaSession' in navigator)) return
+        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
+    }, [isPlaying])
+
     // Overall render guard: Keep mounted as long as user is logged in
     // This prevents destroying the YouTube iframe during 100ms transitions
     if (!user) return null
@@ -969,6 +1037,7 @@ export function GlobalPlayer() {
                                 className="relative flex items-center select-none touch-none w-full h-4 cursor-pointer group"
                                 value={[progress]} max={1} step={0.001}
                                 onValueChange={(val) => {
+                                    setIsSeeking(true)
                                     const newProgress = val[0]
                                     setProgress(newProgress)
                                     if (isYoutube && ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
@@ -977,6 +1046,10 @@ export function GlobalPlayer() {
                                     if (isSoundCloud && scWidgetRef.current) scWidgetRef.current.seekTo(newProgress * duration * 1000)
                                     if (isSpotify && spotifyPlayerRef.current) spotifyPlayerRef.current.seek(newProgress * duration * 1000)
                                     if (isLocal && localAudioRef.current) localAudioRef.current.currentTime = newProgress * duration
+                                }}
+                                onValueCommit={() => {
+                                    // Small delay before resuming sync to allow player to update its internal clock
+                                    setTimeout(() => setIsSeeking(false), 200)
                                 }}
                             >
                                 <Slider.Track className="bg-surface2 relative grow rounded-full h-1 group-hover:h-1.5 transition-all">

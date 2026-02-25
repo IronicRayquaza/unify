@@ -43,17 +43,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const [repeatMode, setRepeatMode] = useState<RepeatMode>('off')
 
     const play = useCallback((track: Track, newQueue?: Track[]) => {
-        if (newQueue) {
-            _setQueue(newQueue)
-            const idx = newQueue.findIndex(t => t.id === track.id)
-            setCurrentIndex(idx)
-        } else {
-            // If playing from existing queue, find index
-            const idx = queue.findIndex(t => t.id === track.id)
-            if (idx !== -1) setCurrentIndex(idx)
+        const performPlay = () => {
+            if (newQueue) {
+                _setQueue(newQueue)
+                const idx = newQueue.findIndex(t => t.id === track.id)
+                setCurrentIndex(idx)
+            } else {
+                // If playing from existing queue, find index
+                const idx = queue.findIndex(t => t.id === track.id)
+                if (idx !== -1) setCurrentIndex(idx)
+            }
+            setCurrentTrack(track)
+            setIsPlaying(true)
         }
-        setCurrentTrack(track)
-        setIsPlaying(true)
+
+        // Use null-flip pattern for a clean reset of the global player
+        setCurrentTrack(null)
+        setTimeout(performPlay, 100)
     }, [queue])
 
     const pause = useCallback(() => setIsPlaying(false), [])

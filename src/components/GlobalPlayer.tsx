@@ -174,7 +174,10 @@ export function GlobalPlayer() {
         setPlayerError(null)
 
         // Reset ready state so loader shows up
-        if (isPlatformChanging || isSpotify || isSoundCloud || isLocal) {
+        // IMPORTANT: For YouTube, if we are reusing the player, we DON'T set ready to false
+        // This prevents the UI from locking the play button in background tabs where 'onReady' might be delayed.
+        const isYoutubeReuse = isYoutube && !isPlatformChanging && ytPlayerRef.current
+        if (!isYoutubeReuse && (isPlatformChanging || isYoutube || isSpotify || isSoundCloud || isLocal)) {
             setPlayReady(false)
             setIsBuffering(true)
         }
@@ -198,7 +201,9 @@ export function GlobalPlayer() {
         // Detect if player is alive and functional
         const isPlayerHealthy = ytPlayerRef.current &&
             typeof ytPlayerRef.current.loadVideoById === 'function' &&
-            typeof ytPlayerRef.current.getPlayerState === 'function'
+            typeof ytPlayerRef.current.getPlayerState === 'function' &&
+            typeof ytPlayerRef.current.playVideo === 'function' &&
+            typeof ytPlayerRef.current.setVolume === 'function'
 
         if (isPlayerHealthy) {
             try {
@@ -296,7 +301,7 @@ export function GlobalPlayer() {
                     if (e.data === 150 || e.data === 101 || e.data === 100) {
                         console.log('[YouTube] Fatal error, skipping track in 3s...')
                         setTimeout(() => {
-                            if (currentTrack && currentTrack.platform === (isYoutube ? 'youtube' : 'ytmusic')) {
+                            if (currentTrackRef.current && (currentTrackRef.current.platform === 'youtube' || currentTrackRef.current.platform === 'ytmusic')) {
                                 nextRef.current(true)
                             }
                         }, 3000)
@@ -308,24 +313,41 @@ export function GlobalPlayer() {
 
     // ─── Global Progress Sync ───
     useEffect(() => {
-        if (!hasMounted || !isPlaying) return
+        if (!hasMounted) return
+        // Run interval if playing OR if we don't have a duration yet
+        if (!isPlaying && duration > 0) return
 
         let interval: any
         if (isYoutube && ytPlayerRef.current) {
             interval = setInterval(() => {
                 const p = ytPlayerRef.current
-                if (p && typeof p.getCurrentTime === 'function') {
+                if (p && typeof p.getCurrentTime === 'function' && typeof p.getDuration === 'function') {
                     const state = p.getPlayerState?.()
-                    if (state === 1) { // Playing
-                        const current = p.getCurrentTime()
-                        const total = p.getDuration()
-                        if (total > 0) {
+                    const current = p.getCurrentTime()
+                    const total = p.getDuration()
+
+                    if (total > 0) {
+                        setDuration(total)
+                        // Only update progress if playing to avoid slider jumping back
+                        if (state === 1) {
                             setProgress(current / total)
-                            setDuration(total)
+                        }
+
+                        // --- BACKGROUND WATCHDOG ---
+                        // If we are near the end (99.5% or within 1s) and it seems "stuck" or ended without event
+                        const isFinished = (total - current) < 1.0 || (current / total) > 0.998
+                        if (isFinished && isPlayingRef.current && state !== 0 && state !== 3) {
+                            // Only trigger if we haven't already just changed tracks
+                            const timeSinceChange = Date.now() - trackChangeTimeRef.current
+                            if (timeSinceChange > 5000) {
+                                console.log('[YouTube] Watchdog: Transitioning background track...')
+                                nextRef.current(true)
+                            }
                         }
                     }
+
                     // Occasional volume sync check
-                    if (state === 1) {
+                    if (state === 1 && typeof p.setVolume === 'function') {
                         p.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
                     }
                 }
@@ -346,14 +368,26 @@ export function GlobalPlayer() {
         if (!ytPlayerRef.current || !isYoutube || !playReady) return
         try {
             const playerState = ytPlayerRef.current.getPlayerState?.()
+            console.log('[YouTube] Sync State:', playerState, 'isPlaying:', isPlaying)
+
             if (isPlaying) {
-                // Only call play if not already playing/buffering to avoid loops
+                // If the player is cued, unstarted, or paused, force play
                 if (playerState !== 1 && playerState !== 3) {
-                    ytPlayerRef.current.playVideo()
+                    if (typeof ytPlayerRef.current.playVideo === 'function') {
+                        ytPlayerRef.current.playVideo()
+                        // Secondary attempt after a short delay for background tabs
+                        setTimeout(() => {
+                            if (isPlayingRef.current && ytPlayerRef.current?.getPlayerState?.() !== 1) {
+                                ytPlayerRef.current?.playVideo?.()
+                            }
+                        }, 1000)
+                    }
                 }
             } else {
                 if (playerState === 1 || playerState === 3) {
-                    ytPlayerRef.current.pauseVideo()
+                    if (typeof ytPlayerRef.current.pauseVideo === 'function') {
+                        ytPlayerRef.current.pauseVideo()
+                    }
                 }
             }
         } catch (e) {
@@ -363,7 +397,9 @@ export function GlobalPlayer() {
 
     useEffect(() => {
         if (!ytPlayerRef.current || !isYoutube) return
-        ytPlayerRef.current.setVolume?.(isMuted ? 0 : Math.round(volume * 100))
+        if (typeof ytPlayerRef.current.setVolume === 'function') {
+            ytPlayerRef.current.setVolume(isMuted ? 0 : Math.round(volume * 100))
+        }
     }, [volume, isMuted, isYoutube])
 
     const [captureStatus, setCaptureStatus] = useState<string | null>(null)
@@ -935,7 +971,9 @@ export function GlobalPlayer() {
                                 onValueChange={(val) => {
                                     const newProgress = val[0]
                                     setProgress(newProgress)
-                                    if (isYoutube && ytPlayerRef.current) ytPlayerRef.current.seekTo(newProgress * duration, true)
+                                    if (isYoutube && ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+                                        ytPlayerRef.current.seekTo(newProgress * duration, true)
+                                    }
                                     if (isSoundCloud && scWidgetRef.current) scWidgetRef.current.seekTo(newProgress * duration * 1000)
                                     if (isSpotify && spotifyPlayerRef.current) spotifyPlayerRef.current.seek(newProgress * duration * 1000)
                                     if (isLocal && localAudioRef.current) localAudioRef.current.currentTime = newProgress * duration

@@ -53,9 +53,13 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
                 }]
             }
 
-            setState({
-                playlists,
-                activePlaylistId: playlists.length > 0 ? playlists[0].id : null,
+            setState(s => {
+                const currentActiveId = s?.activePlaylistId
+                const stillExists = playlists.find(p => p.id === currentActiveId)
+                return {
+                    playlists,
+                    activePlaylistId: stillExists ? currentActiveId : (playlists.length > 0 ? playlists[0].id : null),
+                }
             })
         } catch (error) {
             console.error('Error fetching playlists:', error)

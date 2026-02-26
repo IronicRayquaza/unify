@@ -160,9 +160,9 @@ export function GlobalPlayer() {
         const currentPlatform = currentTrack.platform
         const isPlatformChanging = prevPlatformRef.current !== currentPlatform
 
-        // For same-platform local skips, we NEED a full stop to clear the audio engine.
-        // For other platforms (like YouTube), same-platform reuse is handled internally by their SDKs.
-        if (!isPlatformChanging && currentPlatform === 'local') {
+        // For same-platform local or Spotify skips, we NEED a full stop/pause to avoid audio leaks.
+        // YouTube handles same-platform reuse internally via loadVideoById.
+        if (!isPlatformChanging && (currentPlatform === 'local' || currentPlatform === 'spotify')) {
             stopAllPlayers()
         } else {
             stopAllPlayers(currentPlatform)
@@ -529,6 +529,15 @@ export function GlobalPlayer() {
 
             const currentTrackData = state.track_window?.current_track
             const trackId = currentTrackData?.id
+            const expectedTrackId = currentTrackRef.current?.url.split('track/')[1]?.split('?')[0]
+
+            // SAFEGUARD: If we are in the middle of a track change and the SDK is reporting 
+            // state for a track ID that doesn't match our expected one, ignore it and force pause.
+            if (isTransiting && trackId && expectedTrackId && trackId !== expectedTrackId) {
+                console.log('[Spotify] Ignoring state for stale track:', trackId)
+                if (!state.paused) player.pause()
+                return
+            }
 
             // 1. Sync Play/Pause State
             const isPaused = state.paused
@@ -544,7 +553,6 @@ export function GlobalPlayer() {
 
             // 4. Update track ID ref to detect internal changes
             const trackIdFromSDK = state.track_window?.current_track?.id
-            const expectedTrackId = currentTrackRef.current?.url.split('track/')[1]?.split('?')[0]
             const isEndOfTrack = state.position === 0 && isPaused && state.repeat_mode === 0
 
             if (isEndOfTrack && isPlayingRef.current && !isTransiting) {
@@ -693,15 +701,32 @@ export function GlobalPlayer() {
             widget.unbind(window.SC.Widget.Events.PLAY_PROGRESS)
 
             widget.bind(window.SC.Widget.Events.READY, () => {
+                console.log('[SoundCloud] Player Ready')
                 setPlayReady(true)
                 setIsBuffering(false)
                 widget.setVolume(isMutedRef.current ? 0 : volumeRef.current * 100)
                 if (isPlayingRef.current) {
                     widget.play()
+                    // Background tab safety: secondary attempt if first was blocked
+                    setTimeout(() => {
+                        if (isPlayingRef.current) {
+                            console.log('[SoundCloud] Secondary background play attempt...')
+                            widget.play()
+                        }
+                    }, 1000)
                 }
                 widget.getDuration((ms: number) => {
                     if (ms) setDuration(ms / 1000)
                 })
+            })
+
+            widget.bind(window.SC.Widget.Events.PLAY, () => {
+                setIsBuffering(false)
+                setPlayerError(null)
+            })
+
+            widget.bind(window.SC.Widget.Events.PAUSE, () => {
+                // Background check: if we should be playing but hit a pause, it might be a transient block
             })
 
             widget.bind(window.SC.Widget.Events.FINISH, () => nextRef.current(true))
@@ -735,9 +760,9 @@ export function GlobalPlayer() {
         }
     }, [isSoundCloud, hasMounted, currentTrack?.url])
 
-    // SoundCloud Polling Fallback
+    // SoundCloud Polling & Background Watchdog
     useEffect(() => {
-        if (!isSoundCloud || !isPlaying || !scWidgetRef.current) return
+        if (!isSoundCloud || !scWidgetRef.current) return
         const interval = setInterval(() => {
             const w = scWidgetRef.current
             if (w && typeof w.getPosition === 'function') {
@@ -749,6 +774,21 @@ export function GlobalPlayer() {
                         }
                     })
                 })
+
+                // --- AUTO-PLAY RECOVERY ---
+                // If we should be playing but the widget is paused, force it.
+                // This handles background tab throttles or transient autoplay blocks.
+                if (isPlayingRef.current && typeof w.isPaused === 'function') {
+                    w.isPaused((paused: boolean) => {
+                        const timeSinceChange = Date.now() - trackChangeTimeRef.current
+                        if (paused && timeSinceChange > 2000) {
+                            console.log('[SoundCloud] Recovery: Forcing play state in background...')
+                            w.play()
+                            setPlayReady(true)
+                            setIsBuffering(false)
+                        }
+                    })
+                }
             }
         }, 1000)
         return () => clearInterval(interval)

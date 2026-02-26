@@ -9,35 +9,38 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Query is required' }, { status: 400 })
     }
 
-    const results: any[] = []
     const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY
 
-    // 1. YouTube Music Search (InnerTube)
-    try {
-        const payload = {
-            context: {
-                client: {
-                    clientName: "WEB_REMIX",
-                    clientVersion: "1.20231214.01.00",
-                    hl: "en",
-                    gl: "US",
-                    utcOffsetMinutes: 0
-                }
-            },
-            query: q,
-            params: "EgWKAQIIAWoKEAMQBBAJEAoQBQ==" // Filter for songs
-        }
-
-        const ytmRes = await axios.post(`https://music.youtube.com/youtubei/v1/search?key=${process.env.YOUTUBE_MUSIC_KEY || 'AIzaSyAO_FJ2nm_S8YvS6O0-t1Xyv59M'}`, payload, {
-            headers: {
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://music.youtube.com/'
+    // Define search functions for each platform
+    const searchYouTubeMusic = async () => {
+        try {
+            const payload = {
+                context: {
+                    client: {
+                        clientName: "WEB_REMIX",
+                        clientVersion: "1.20231214.01.00",
+                        hl: "en",
+                        gl: "US",
+                        utcOffsetMinutes: 0
+                    }
+                },
+                query: q,
+                params: "EgWKAQIIAWoKEAMQBBAJEAoQBQ==" // Filter for songs
             }
-        })
 
-        const shelves = ytmRes.data.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents
-        if (shelves) {
+            const ytmRes = await axios.post(`https://music.youtube.com/youtubei/v1/search?key=${process.env.YOUTUBE_MUSIC_KEY || 'AIzaSyAO_FJ2nm_S8YvS6O0-t1Xyv59M'}`, payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': 'https://music.youtube.com/'
+                },
+                timeout: 5000
+            })
+
+            const shelves = ytmRes.data.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents
+            if (!shelves) return []
+
+            const tracks: any[] = []
             for (const shelf of shelves) {
                 const musicShelf = shelf.musicShelfRenderer
                 if (!musicShelf || !musicShelf.contents) continue
@@ -59,7 +62,7 @@ export async function GET(req: NextRequest) {
                     const thumbnails = track.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || []
                     const thumbnail = thumbnails[thumbnails.length - 1]?.url
 
-                    results.push({
+                    tracks.push({
                         id: videoId,
                         url: `https://music.youtube.com/watch?v=${videoId}`,
                         title,
@@ -69,40 +72,40 @@ export async function GET(req: NextRequest) {
                     })
                 }
             }
+            return tracks
+        } catch (e) {
+            console.error('YouTube Music search failed:', e)
+            return []
         }
-    } catch (e) {
-        console.error('YouTube Music search failed:', e)
     }
 
-    // 2. YouTube Search (API or Scraping)
-    try {
-        let ytTracks: any[] = []
-
-        if (apiKey) {
-            try {
-                const apiRes = await axios.get(
-                    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(q)}&key=${apiKey}&maxResults=10`
-                )
-                ytTracks = apiRes.data.items.map((item: any) => ({
-                    id: item.id.videoId,
-                    url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-                    title: item.snippet.title,
-                    artist: item.snippet.channelTitle,
-                    thumbnail: item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
-                    platform: 'youtube'
-                }))
-                results.push(...ytTracks)
-            } catch (e) {
-                console.error('YouTube API search failed, falling back to scraping...', e)
+    const searchYouTube = async () => {
+        try {
+            if (apiKey) {
+                try {
+                    const apiRes = await axios.get(
+                        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(q)}&key=${apiKey}&maxResults=5`,
+                        { timeout: 5000 }
+                    )
+                    return apiRes.data.items.map((item: any) => ({
+                        id: item.id.videoId,
+                        url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+                        title: item.snippet.title,
+                        artist: item.snippet.channelTitle,
+                        thumbnail: item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
+                        platform: 'youtube'
+                    }))
+                } catch (e) {
+                    console.error('YouTube API search failed, falling back to scraping...', e)
+                }
             }
-        }
 
-        if (results.filter(r => r.platform === 'youtube').length === 0) {
             const { data: ytData } = await axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&sp=EgIQAQ%253D%253D`, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
                     'Accept-Language': 'en-US,en;q=0.9'
-                }
+                },
+                timeout: 5000
             })
 
             const dataMatch = ytData.match(/ytInitialData\s*=\s*({.+?});\s*(?:<\/script>|window)/) ||
@@ -110,88 +113,108 @@ export async function GET(req: NextRequest) {
                 ytData.match(/(?:var|window\[['"])ytInitialData['"]\]?\s*=\s*({[\s\S]*?});/);
 
             if (dataMatch) {
-                try {
-                    const json = JSON.parse(dataMatch[1]);
-                    const items = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents
-                        ?.find((c: any) => c.itemSectionRenderer)?.itemSectionRenderer?.contents;
+                const json = JSON.parse(dataMatch[1]);
+                const items = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents
+                    ?.find((c: any) => c.itemSectionRenderer)?.itemSectionRenderer?.contents;
 
-                    if (items) {
-                        let count = 0;
-                        for (const item of items) {
-                            const v = item.videoRenderer;
-                            if (v && v.videoId && count < 5) {
-                                results.push({
-                                    id: v.videoId,
-                                    url: `https://www.youtube.com/watch?v=${v.videoId}`,
-                                    title: v.title?.runs?.[0]?.text || v.title?.simpleText || 'Unknown Title',
-                                    artist: v.longBylineText?.runs?.[0]?.text || v.shortBylineText?.runs?.[0]?.text || 'YouTube',
-                                    thumbnail: v.thumbnail?.thumbnails?.[0]?.url,
-                                    duration: v.lengthText?.simpleText || v.lengthText?.accessibility?.accessibilityData?.label,
-                                    platform: 'youtube'
-                                })
-                                count++;
-                            }
+                if (items) {
+                    const tracks: any[] = []
+                    let count = 0;
+                    for (const item of items) {
+                        const v = item.videoRenderer;
+                        if (v && v.videoId && count < 5) {
+                            tracks.push({
+                                id: v.videoId,
+                                url: `https://www.youtube.com/watch?v=${v.videoId}`,
+                                title: v.title?.runs?.[0]?.text || v.title?.simpleText || 'Unknown Title',
+                                artist: v.longBylineText?.runs?.[0]?.text || v.shortBylineText?.runs?.[0]?.text || 'YouTube',
+                                thumbnail: v.thumbnail?.thumbnails?.[0]?.url,
+                                duration: v.lengthText?.simpleText || v.lengthText?.accessibility?.accessibilityData?.label,
+                                platform: 'youtube'
+                            })
+                            count++;
                         }
                     }
-                } catch (e) { }
-            }
-        }
-    } catch (e) {
-        console.error('YouTube search error:', e)
-    }
-
-    // 3. SoundCloud Search
-    try {
-        const { data: mainPage } = await axios.get('https://soundcloud.com', { headers: { 'User-Agent': 'Mozilla/5.0' } })
-        const scriptMatch = mainPage.match(/src="([^"]+\/assets\/[^"]+\.js)"/g)
-        let clientId = ''
-        if (scriptMatch) {
-            for (const sm of scriptMatch.slice(-5)) {
-                const sUrl = sm.match(/src="([^"]+)"/)?.[1]
-                if (sUrl) {
-                    try {
-                        const { data: scriptContent } = await axios.get(sUrl, { timeout: 2000 })
-                        const idMatch = scriptContent.match(/client_id[:=]"([a-zA-Z0-9]{32})"/)
-                        if (idMatch) { clientId = idMatch[1]; break }
-                    } catch (e) { }
+                    return tracks
                 }
             }
+            return []
+        } catch (e) {
+            console.error('YouTube search error:', e)
+            return []
         }
+    }
 
-        if (clientId) {
-            const { data: scData } = await axios.get(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(q)}&client_id=${clientId}&limit=10`)
-            if (scData.collection) {
-                scData.collection.slice(0, 5).forEach((item: any) => {
-                    results.push({
+    const searchSoundCloud = async () => {
+        try {
+            const { data: mainPage } = await axios.get('https://soundcloud.com', { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 3000 })
+            const scriptMatch = mainPage.match(/src="([^"]+\/assets\/[^"]+\.js)"/g)
+            let clientId = ''
+            if (scriptMatch) {
+                for (const sm of scriptMatch.slice(-5)) {
+                    const sUrl = sm.match(/src="([^"]+)"/)?.[1]
+                    if (sUrl) {
+                        try {
+                            const { data: scriptContent } = await axios.get(sUrl, { timeout: 2000 })
+                            const idMatch = scriptContent.match(/client_id[:=]"([a-zA-Z0-9]{32})"/)
+                            if (idMatch) { clientId = idMatch[1]; break }
+                        } catch (e) { }
+                    }
+                }
+            }
+
+            if (clientId) {
+                const { data: scData } = await axios.get(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(q)}&client_id=${clientId}&limit=5`, { timeout: 3000 })
+                if (scData.collection) {
+                    return scData.collection.map((item: any) => ({
                         url: item.permalink_url,
                         title: item.title,
                         artist: item.user?.username || 'SoundCloud',
                         thumbnail: item.artwork_url || item.user?.avatar_url,
                         duration: item.duration ? `${Math.floor(item.duration / 60000)}:${Math.floor((item.duration % 60000) / 1000).toString().padStart(2, '0')}` : undefined,
                         platform: 'soundcloud'
-                    })
-                })
+                    }))
+                }
             }
+            return []
+        } catch (e) {
+            return []
         }
-    } catch (e) { }
+    }
 
-    // 3. Apple Music Search
-    try {
-        const { data: appleData } = await axios.get(`https://music.apple.com/us/search?term=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } })
-        const songRegex = /\{"id":"([^"]+)","type":"songs".+?"name":"([^"]+)".+?"artistName":"([^"]+)".+?"url":"([^"]+)".+?"artwork":\{"url":"([^"]+)"/g
-        let match;
-        let count = 0;
-        while ((match = songRegex.exec(appleData)) !== null && count < 5) {
-            results.push({
-                url: match[4],
-                title: match[2],
-                artist: match[3],
-                thumbnail: match[5].replace('{w}', '200').replace('{h}', '200').replace('{f}', 'jpg'),
-                platform: 'apple'
-            })
-            count++;
+    const searchAppleMusic = async () => {
+        try {
+            const { data: appleData } = await axios.get(`https://music.apple.com/us/search?term=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 5000 })
+            const songRegex = /\{"id":"([^"]+)","type":"songs".+?"name":"([^"]+)".+?"artistName":"([^"]+)".+?"url":"([^"]+)".+?"artwork":\{"url":"([^"]+)"/g
+            let match;
+            const tracks: any[] = []
+            let count = 0;
+            while ((match = songRegex.exec(appleData)) !== null && count < 5) {
+                tracks.push({
+                    url: match[4],
+                    title: match[2],
+                    artist: match[3],
+                    thumbnail: match[5].replace('{w}', '200').replace('{h}', '200').replace('{f}', 'jpg'),
+                    platform: 'apple'
+                })
+                count++;
+            }
+            return tracks
+        } catch (e) {
+            return []
         }
-    } catch (e) { }
+    }
+
+    // Run ALL searches in parallel
+    const allResults = await Promise.all([
+        searchYouTubeMusic(),
+        searchYouTube(),
+        searchSoundCloud(),
+        searchAppleMusic()
+    ])
+
+    // Flatten results
+    const results = allResults.flat()
 
     return NextResponse.json({ results })
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, ChangeEvent } from 'react'
+import { useState, useRef, ChangeEvent, useEffect } from 'react'
 import { Track, Platform, ResolveResponse } from '@/types'
 import { detectPlatform, isValidUrl, platformDisplayName } from '@/lib/platform'
 import { v4 as uuidv4 } from 'uuid'
@@ -52,12 +52,27 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
     if (val.trim()) {
       const p = detectPlatform(val)
       setDetectedPlatform(p !== 'unknown' ? p : null)
-      if (searchResults.length > 0) setSearchResults([])
+      // We don't clear results here anymore to allow live search to update them
     } else {
       setDetectedPlatform(null)
       setSearchResults([])
     }
   }
+
+  // Live Search Effect
+  useEffect(() => {
+    const trimmed = url.trim()
+    if (!trimmed || isValidUrl(trimmed)) {
+      if (!trimmed) setSearchResults([])
+      return
+    }
+
+    const timer = setTimeout(() => {
+      handleSearch(trimmed)
+    }, 600) // 600ms debounce
+
+    return () => clearTimeout(timer)
+  }, [url])
 
   const handleAction = async () => {
     const trimmed = url.trim()
@@ -72,9 +87,14 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
 
   const { token: spotifyToken, isConnected, login, refreshAccessToken } = useSpotify()
 
+  const searchCounter = useRef(0)
+
   const handleSearch = async (query: string) => {
+    const currentId = ++searchCounter.current
     setLoading(true)
-    setSearchResults([])
+    // We don't clear results here anymore to prevent flickering
+    // setFilter('all') // Keep existing filter if possible, or reset? 
+    // Usually resetting filter to 'all' on new search makes sense.
     setFilter('all')
 
     try {
@@ -130,10 +150,13 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
       const [apiData, spotifyRes] = await Promise.all([apiPromise, spotifyPromise]);
       const apiResults: ResolveResponse[] = apiData.results || [];
 
+      // If a newer search has started, ignore these results
+      if (currentId !== searchCounter.current) return;
+
       const combined = [...spotifyRes, ...apiResults]
       setSearchResults(combined)
 
-      if (combined.length === 0) {
+      if (combined.length === 0 && query.length > 2) {
         showFeedback('No results found across platforms', 'error')
       }
     } catch (e: any) {

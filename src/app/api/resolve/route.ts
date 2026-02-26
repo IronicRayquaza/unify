@@ -151,6 +151,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
+
   } catch (e) {
     console.error('Resolution error:', e)
   }

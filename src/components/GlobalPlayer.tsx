@@ -59,6 +59,14 @@ export function GlobalPlayer() {
     const isSpotify = currentTrack?.platform === 'spotify'
     const isApple = currentTrack?.platform === 'apple'
     const isLocal = currentTrack?.platform === 'local'
+
+    // Helper to detect if two platforms use the same engine (YT vs YTMusic)
+    const isSameEngine = (p1: string | null, p2: string | null) => {
+        if (!p1 || !p2) return p1 === p2
+        if ((p1 === 'youtube' || p1 === 'ytmusic') && (p2 === 'youtube' || p2 === 'ytmusic')) return true
+        return p1 === p2
+    }
+
     const isEmbedPlatform = isYoutube || isSoundCloud || isApple
 
     const [progress, setProgress] = useState(0)
@@ -98,7 +106,106 @@ export function GlobalPlayer() {
     useEffect(() => { pauseRef.current = pause }, [pause])
     useEffect(() => { currentTrackRef.current = currentTrack }, [currentTrack])
 
-    // ... (keyboard hotkeys) ...
+    // ─── Background Audio Heartbeat (AudioContext) ───
+    // Maintains "Audible" status for the tab to prevent aggressive CPU/Timer throttling
+    useEffect(() => {
+        if (!hasMounted) return
+
+        let ctx: AudioContext | null = null
+        let osc: OscillatorNode | null = null
+
+        const startHeartbeat = async () => {
+            // Keep heartbeat running even during brief "pause" transitions
+            if (!isPlaying && !currentTrackRef.current) return
+
+            try {
+                const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+                ctx = new AudioContextClass()
+                osc = ctx.createOscillator()
+                const gain = ctx.createGain()
+
+                osc.type = 'sine'
+                osc.frequency.setValueAtTime(1, ctx.currentTime)
+                gain.gain.setValueAtTime(0.001, ctx.currentTime)
+
+                osc.connect(gain)
+                gain.connect(ctx.destination)
+
+                if (ctx.state === 'suspended') await ctx.resume()
+                osc.start()
+            } catch (e) { }
+        }
+
+        startHeartbeat()
+
+        return () => {
+            if (osc) { try { osc.stop() } catch (e) { } }
+            if (ctx) { try { ctx.close() } catch (e) { } }
+        }
+    }, [isPlaying, hasMounted, currentTrack?.id])
+
+    // ─── Background Watchdog Worker ───
+    // This worker runs independently of main-thread throttling to trigger recovery logic
+    const workerRef = useRef<Worker | null>(null)
+    useEffect(() => {
+        if (!hasMounted) return
+
+        const workerCode = `
+            let interval = null;
+            self.onmessage = (e) => {
+                if (e.data === 'start') {
+                    if (interval) clearInterval(interval);
+                    interval = setInterval(() => self.postMessage('tick'), 1000);
+                } else if (e.data === 'stop') {
+                    if (interval) clearInterval(interval);
+                    interval = null;
+                }
+            };
+        `
+        const blob = new Blob([workerCode], { type: 'application/javascript' })
+        const worker = new Worker(URL.createObjectURL(blob))
+
+        worker.onmessage = () => {
+            if (!isPlayingRef.current) return
+
+            // 1. YouTube Watchdog
+            if (ytPlayerRef.current && isYoutube) {
+                const state = ytPlayerRef.current.getPlayerState?.()
+                if (state !== 1 && state !== 3) { // Not Playing or Buffering
+                    const timeSinceChange = Date.now() - trackChangeTimeRef.current
+                    if (timeSinceChange > 1500 && timeSinceChange < 15000) {
+                        console.log('[YouTube] Worker-triggered Background Recovery...')
+                        ytPlayerRef.current.playVideo?.()
+                    }
+                }
+            }
+
+            // 2. SoundCloud Watchdog
+            if (scWidgetRef.current && isSoundCloud) {
+                scWidgetRef.current.isPaused((paused: boolean) => {
+                    const timeSinceChange = Date.now() - trackChangeTimeRef.current
+                    if (paused && timeSinceChange > 2000) {
+                        scWidgetRef.current.play()
+                    }
+                })
+            }
+        }
+
+        workerRef.current = worker
+        return () => {
+            worker.terminate()
+            workerRef.current = null
+        }
+    }, [hasMounted, isYoutube, isSoundCloud])
+
+    useEffect(() => {
+        if (isPlaying && (isYoutube || isSoundCloud || isSpotify)) {
+            workerRef.current?.postMessage('start')
+        } else {
+            workerRef.current?.postMessage('stop')
+        }
+    }, [isPlaying, isYoutube, isSoundCloud, isSpotify])
+
     // Cleanup on logout
     useEffect(() => {
         if (!user && isPlaying) {
@@ -158,13 +265,20 @@ export function GlobalPlayer() {
         }
 
         const currentPlatform = currentTrack.platform
-        const isPlatformChanging = prevPlatformRef.current !== currentPlatform
+        const isPlatformChanging = !isSameEngine(prevPlatformRef.current, currentPlatform)
 
-        // For same-platform local or Spotify skips, we NEED a full stop/pause to avoid audio leaks.
-        // YouTube handles same-platform reuse internally via loadVideoById.
+        // For same-engine local or Spotify skips, we NEED a full stop/pause to avoid audio leaks.
         if (!isPlatformChanging && (currentPlatform === 'local' || currentPlatform === 'spotify')) {
             stopAllPlayers()
+        } else if (isPlatformChanging) {
+            console.log('[GlobalPlayer] Platform Handoff: Overlapping session...')
+            setTimeout(() => {
+                if (currentTrackRef.current?.id === currentTrack.id) {
+                    stopAllPlayers(currentPlatform)
+                }
+            }, 1500)
         } else {
+            // Same engine (e.g. YT -> YT), only stop other engines
             stopAllPlayers(currentPlatform)
         }
 
@@ -175,10 +289,9 @@ export function GlobalPlayer() {
         setPlayerError(null)
 
         // Reset ready state so loader shows up
-        // IMPORTANT: For YouTube, if we are reusing the player, we DON'T set ready to false
-        // This prevents the UI from locking the play button in background tabs where 'onReady' might be delayed.
-        const isYoutubeReuse = isYoutube && !isPlatformChanging && ytPlayerRef.current
-        if (!isYoutubeReuse && (isPlatformChanging || isYoutube || isSpotify || isSoundCloud || isLocal)) {
+        // Treatment of youtube/ytmusic as same engine prevents flash of "Ready=false"
+        const isEngineReuse = isYoutube && !isPlatformChanging && ytPlayerRef.current
+        if (!isEngineReuse && (isPlatformChanging || isYoutube || isSpotify || isSoundCloud || isLocal)) {
             setPlayReady(false)
             setIsBuffering(true)
         }
@@ -218,9 +331,22 @@ export function GlobalPlayer() {
                 })
 
                 // If isPlaying is true, we want to start it immediately.
-                // However, loadVideoById usually autoplays. We force it just in case.
                 if (isPlayingRef.current) {
-                    if (ytPlayerRef.current?.playVideo) ytPlayerRef.current.playVideo()
+                    const p = ytPlayerRef.current
+                    if (p.playVideo) p.playVideo()
+
+                    // Background safety: Immediate and repeated play attempts
+                    let attempts = 0
+                    const forcePlay = () => {
+                        const state = p.getPlayerState?.()
+                        if (state !== 1 && attempts < 10 && isPlayingRef.current) {
+                            console.log('[YouTube] Background Reuse Play Attempt:', attempts + 1)
+                            p.playVideo?.()
+                            attempts++
+                            setTimeout(forcePlay, 500)
+                        }
+                    }
+                    setTimeout(forcePlay, 50)
                 }
 
                 // Sync volume
@@ -276,7 +402,7 @@ export function GlobalPlayer() {
 
                     if (state === 0) { // ENDED
                         console.log('[YouTube] Video Finished, calling next')
-                        setTimeout(() => nextRef.current(true), 200)
+                        nextRef.current(true)
                     }
                     else if (state === 1) { // PLAYING
                         setIsBuffering(false)
@@ -543,7 +669,10 @@ export function GlobalPlayer() {
             const isPaused = state.paused
 
             if (isPaused) {
-                if (!isTransiting && isPlayingRef.current) pauseRef.current()
+                // Background safety: If Spotify pauses but our intent is still to play,
+                // DO NOT sync the global state to paused. This prevents race conditions
+                // where the end-of-track pause kills the auto-switch logic.
+                if (!isPlayingRef.current && !isTransiting) pauseRef.current()
             } else {
                 if (!isPlayingRef.current) resumeRef.current()
             }
@@ -882,8 +1011,9 @@ export function GlobalPlayer() {
 
     useEffect(() => {
         if (!('mediaSession' in navigator)) return
+        // Always set playbackState to 'playing' if our intent is playing, even during transitions
         navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
-    }, [isPlaying])
+    }, [isPlaying, currentTrack])
 
     // Overall render guard: Keep mounted as long as user is logged in
     // This prevents destroying the YouTube iframe during 100ms transitions
@@ -894,10 +1024,19 @@ export function GlobalPlayer() {
     return (
         <>
             {/* Visual content container (YouTube / SoundCloud / Apple) */}
-            <div className={clsx(
-                "fixed bottom-[96px] left-6 z-40 transition-all duration-500 ease-out transform flex flex-col items-start gap-3",
-                hasTrack && ((showVideo && isEmbedPlatform) || (isSpotify && playerError)) ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 pointer-events-none'
-            )}>
+            <div
+                style={{
+                    opacity: 1,
+                    width: hasTrack && showVideo && isEmbedPlatform ? '340px' : '4px',
+                    height: hasTrack && showVideo && isEmbedPlatform ? '240px' : '4px',
+                    left: hasTrack && showVideo && isEmbedPlatform ? '24px' : '-10px',
+                    overflow: 'hidden',
+                    visibility: hasTrack ? 'visible' : 'hidden'
+                }}
+                className={clsx(
+                    "fixed bottom-[110px] z-[60] transition-all duration-300 ease-out flex flex-col items-start gap-3",
+                    hasTrack && showVideo && isEmbedPlatform ? 'translate-y-0' : 'pointer-events-none'
+                )}>
                 {/* External Sync Button */}
                 {hasTrack && isYoutube && (showVideo || playerError) && (
                     <button

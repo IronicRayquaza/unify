@@ -91,10 +91,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
             if (isAuto && r === 'one' && prevTrack) {
                 setCurrentTrack(null)
+                // Background safety: Use zero delay for auto-repeat to avoid throttling
+                const repeatDelay = isAuto ? 0 : 50
                 setTimeout(() => {
                     setCurrentTrack(prevTrack)
                     setIsPlaying(true)
-                }, 50)
+                }, repeatDelay)
                 return
             }
 
@@ -124,8 +126,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             }
         }
 
-        setCurrentTrack(null)
-        setTimeout(performNext, 100)
+        if (isAuto) {
+            // Background safety: Synchronous transition for auto-switches.
+            // This prevents the browser from suspending the tab when audio stops
+            // during the transition, and avoids setTimeout throttling.
+            performNext()
+        } else {
+            setCurrentTrack(null)
+            setTimeout(performNext, 100)
+        }
     }, [queue, isShuffle, repeatMode, currentTrack])
 
     const prev = useCallback(() => {

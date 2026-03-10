@@ -10,7 +10,17 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=".env.local")
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 supabase: Client = create_client(
     os.environ.get("NEXT_PUBLIC_SUPABASE_URL"),
@@ -23,6 +33,35 @@ class CaptureRequest(BaseModel):
     artist: str = None
     thumbnail: str = None
     mode: str = "audio"
+
+@app.get("/soundcloud-resolve")
+async def resolve_soundcloud(url: str):
+    print(f"[Backend] SoundCloud Resolve: {url}")
+    try:
+        ydl_opts = {
+            'format': 'bestaudio[ext=mp3]/bestaudio[ext=m4a]/bestaudio[protocol^=http]/bestaudio',
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            # Find the best audio stream URL
+            stream_url = info.get('url')
+            
+            return {
+                "success": True,
+                "id": info.get('id'),
+                "title": info.get('title'),
+                "artist": info.get('uploader'),
+                "thumbnail": info.get('thumbnail'),
+                "duration": info.get('duration'),
+                "stream_url": stream_url
+            }
+    except Exception as e:
+        print(f"[Backend] SoundCloud Resolve Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/capture")
 async def capture_media(request: CaptureRequest):

@@ -153,7 +153,13 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
       // If a newer search has started, ignore these results
       if (currentId !== searchCounter.current) return;
 
-      const combined = [...spotifyRes, ...apiResults]
+      // Interleave Spotify results with other platform results
+      const combined: any[] = []
+      const maxLen = Math.max(spotifyRes.length, apiResults.length)
+      for (let i = 0; i < maxLen; i++) {
+        if (spotifyRes[i]) combined.push(spotifyRes[i])
+        if (apiResults[i]) combined.push(apiResults[i])
+      }
       setSearchResults(combined)
 
       if (combined.length === 0 && query.length > 2) {

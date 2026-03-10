@@ -53,7 +53,6 @@ export function PlaylistView({ playlist, onAddTrack, onRemoveTrack, onUpdateTrac
   // Sync the player queue if we're currently playing from this playlist
   useEffect(() => {
     if (currentTrack && playlist.tracks.some(t => t.id === currentTrack.id)) {
-      console.log('[PlaylistView] Syncing updated track list to player queue')
       setQueue(playlist.tracks)
     }
   }, [playlist.tracks, currentTrack?.id, setQueue])

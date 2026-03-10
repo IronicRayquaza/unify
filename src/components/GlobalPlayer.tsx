@@ -67,7 +67,7 @@ export function GlobalPlayer() {
         return p1 === p2
     }
 
-    const isEmbedPlatform = isYoutube || isSoundCloud || isApple
+    const isEmbedPlatform = isYoutube // Only YouTube needs the mini-player container now
 
     const [progress, setProgress] = useState(0)
     const [duration, setDuration] = useState(0)
@@ -77,13 +77,14 @@ export function GlobalPlayer() {
     const [showVideo, setShowVideo] = useState(true)
     const [hasMounted, setHasMounted] = useState(false)
     const [isSeeking, setIsSeeking] = useState(false)
+    const [scStreamUrl, setScStreamUrl] = useState<string | null>(null)
 
     const localAudioRef = useRef<HTMLAudioElement>(null)
     const ytPlayerRef = useRef<any>(null)
     const ytIntervalRef = useRef<any>(null)
-    const scWidgetRef = useRef<any>(null)
     const spotifyPlayerRef = useRef<any>(null)
     const ytContainerRef = useRef<HTMLDivElement>(null)
+    const spotifyIntervalRef = useRef<any>(null)
 
     const { activePlaylist, addTrack: addTrackToPlaylist, refreshPlaylists } = usePlaylists()
     const [isCapturing, setIsCapturing] = useState(false)
@@ -96,6 +97,11 @@ export function GlobalPlayer() {
     const pauseRef = useRef(pause)
     const prevPlatformRef = useRef<string | null>(null)
     const currentTrackRef = useRef(currentTrack)
+    const isSeekingRef = useRef(false)
+    const trackChangeTimeRef = useRef<number>(0)
+    const lastSpotifyIdRef = useRef<string | null>(null)
+    const lastNextActionTimeRef = useRef<number>(0)
+    const spotifyTokenRef = useRef(spotifyToken)
 
     useEffect(() => { setHasMounted(true) }, [])
     useEffect(() => { isPlayingRef.current = isPlaying }, [isPlaying])
@@ -105,6 +111,129 @@ export function GlobalPlayer() {
     useEffect(() => { resumeRef.current = resume }, [resume])
     useEffect(() => { pauseRef.current = pause }, [pause])
     useEffect(() => { currentTrackRef.current = currentTrack }, [currentTrack])
+    useEffect(() => { isSeekingRef.current = isSeeking }, [isSeeking])
+
+    // ─── YouTube Logic ───
+    const initYTPlayer = useCallback((videoId: string) => {
+        if (!window.YT || !window.YT.Player) {
+            if (!document.getElementById('youtube-sdk')) {
+                const script = document.createElement('script')
+                script.id = 'youtube-sdk'
+                script.src = 'https://www.youtube.com/iframe_api'
+                document.body.appendChild(script)
+            }
+            window.onYouTubeIframeAPIReady = () => initYTPlayer(videoId)
+            return
+        }
+
+        // Detect if player is alive and functional
+        const isPlayerHealthy = ytPlayerRef.current &&
+            typeof ytPlayerRef.current.loadVideoById === 'function' &&
+            typeof ytPlayerRef.current.getPlayerState === 'function' &&
+            typeof ytPlayerRef.current.playVideo === 'function' &&
+            typeof ytPlayerRef.current.setVolume === 'function'
+
+        if (isPlayerHealthy) {
+            try {
+                console.log('[YouTube] Reusing existing player for:', videoId)
+                setPlayReady(true)
+                setIsBuffering(true)
+
+                ytPlayerRef.current.loadVideoById({
+                    videoId: videoId,
+                    startSeconds: 0
+                })
+
+                if (isPlayingRef.current) {
+                    const p = ytPlayerRef.current
+                    if (p.playVideo) p.playVideo()
+
+                    let attempts = 0
+                    const forcePlay = () => {
+                        const state = p.getPlayerState?.()
+                        if (state !== 1 && attempts < 10 && isPlayingRef.current) {
+                            console.log('[YouTube] Background Reuse Play Attempt:', attempts + 1)
+                            p.playVideo?.()
+                            attempts++
+                            setTimeout(forcePlay, 500)
+                        }
+                    }
+                    setTimeout(forcePlay, 50)
+                }
+
+                ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                trackChangeTimeRef.current = Date.now()
+                return
+            } catch (e) {
+                console.warn('[YouTube] Reuse failed, recreating player:', e)
+                ytPlayerRef.current = null
+            }
+        }
+
+        if (!document.getElementById('yt-player')) {
+            console.error('[YouTube] Player target element not found')
+            return
+        }
+
+        ytPlayerRef.current = new window.YT.Player('yt-player', {
+            videoId: videoId,
+            playerVars: {
+                autoplay: 1,
+                controls: 1,
+                modestbranding: 1,
+                rel: 0,
+                origin: window.location.origin
+            },
+            events: {
+                onReady: (e: any) => {
+                    setPlayReady(true)
+                    setIsBuffering(false)
+                    if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
+                        e.target.playVideo()
+                    }
+                    if (typeof e.target.setVolume === 'function') {
+                        e.target.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                    }
+                    if (typeof e.target.getDuration === 'function') {
+                        const d = e.target.getDuration()
+                        if (d > 0) setDuration(d)
+                    }
+                    trackChangeTimeRef.current = Date.now()
+                },
+                onStateChange: (e: any) => {
+                    const state = e.data
+                    if (state === 0) {
+                        console.log('[YouTube] Video Finished, calling next')
+                        nextRef.current(true)
+                    } else if (state === 1) {
+                        setIsBuffering(false)
+                        setPlayerError(null)
+                        if (!isPlayingRef.current) resumeRef.current()
+                    } else if (state === 2) {
+                        if (!isPlayingRef.current) pauseRef.current()
+                    } else if (state === 3) {
+                        setIsBuffering(true)
+                    } else if (state === 5 || state === -1) {
+                        if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
+                            e.target.playVideo()
+                        }
+                    }
+                },
+                onError: (e: any) => {
+                    const msg = getYouTubeErrorMessage(e.data)
+                    setPlayerError(msg)
+                    setIsBuffering(false)
+                    if (e.data === 150 || e.data === 101 || e.data === 100) {
+                        setTimeout(() => {
+                            if (currentTrackRef.current && (currentTrackRef.current.platform === 'youtube' || currentTrackRef.current.platform === 'ytmusic')) {
+                                nextRef.current(true)
+                            }
+                        }, 3000)
+                    }
+                }
+            }
+        })
+    }, [])
 
     // ─── Background Audio Heartbeat (AudioContext) ───
     // Maintains "Audible" status for the tab to prevent aggressive CPU/Timer throttling
@@ -115,22 +244,24 @@ export function GlobalPlayer() {
         let osc: OscillatorNode | null = null
 
         const startHeartbeat = async () => {
-            // Keep heartbeat running even during brief "pause" transitions
-            if (!isPlaying && !currentTrackRef.current) return
+            // Keep heartbeat running as long as a track is loaded, even if paused, 
+            // to ensure transitions between platforms (which involve momentary pauses) 
+            // aren't killed by the browser.
+            if (!currentTrackRef.current) return
 
             try {
-                const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+                const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext
                 ctx = new AudioContextClass()
+                if (!ctx) return
+
                 osc = ctx.createOscillator()
                 const gain = ctx.createGain()
 
                 osc.type = 'sine'
                 osc.frequency.setValueAtTime(1, ctx.currentTime)
-                gain.gain.setValueAtTime(0.001, ctx.currentTime)
-
+                gain.gain.setValueAtTime(0.0001, ctx.currentTime) // Inaudible but "audible" to browser
                 osc.connect(gain)
                 gain.connect(ctx.destination)
-
                 if (ctx.state === 'suspended') await ctx.resume()
                 osc.start()
             } catch (e) { }
@@ -142,7 +273,7 @@ export function GlobalPlayer() {
             if (osc) { try { osc.stop() } catch (e) { } }
             if (ctx) { try { ctx.close() } catch (e) { } }
         }
-    }, [isPlaying, hasMounted, currentTrack?.id])
+    }, [hasMounted, currentTrack?.id]) // Restart on track change to stay fresh
 
     // ─── Background Watchdog Worker ───
     // This worker runs independently of main-thread throttling to trigger recovery logic
@@ -166,26 +297,61 @@ export function GlobalPlayer() {
         const worker = new Worker(URL.createObjectURL(blob))
 
         worker.onmessage = () => {
-            if (!isPlayingRef.current) return
+            if (!isPlayingRef.current || !currentTrackRef.current) return
+
+            const platform = currentTrackRef.current.platform
+            const isYT = platform === 'youtube' || platform === 'ytmusic'
+            const isSC = platform === 'soundcloud'
+            const isLC = platform === 'local'
+            const isSP = platform === 'spotify'
 
             // 1. YouTube Watchdog
-            if (ytPlayerRef.current && isYoutube) {
-                const state = ytPlayerRef.current.getPlayerState?.()
-                if (state !== 1 && state !== 3) { // Not Playing or Buffering
+            if (isYT) {
+                if (ytPlayerRef.current && typeof ytPlayerRef.current.getPlayerState === 'function') {
+                    const state = ytPlayerRef.current.getPlayerState()
+                    if (state !== 1 && state !== 3) { // Not Playing or Buffering
+                        const timeSinceChange = Date.now() - trackChangeTimeRef.current
+                        if (timeSinceChange > 1500 && timeSinceChange < 15000) {
+                            console.log('[YouTube] Worker-triggered Background Recovery...')
+                            ytPlayerRef.current.playVideo?.()
+                        }
+                    }
+                } else if (!ytPlayerRef.current) {
                     const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                    if (timeSinceChange > 1500 && timeSinceChange < 15000) {
-                        console.log('[YouTube] Worker-triggered Background Recovery...')
-                        ytPlayerRef.current.playVideo?.()
+                    if (timeSinceChange > 3000 && timeSinceChange < 15000) {
+                        const videoId = extractVideoId(currentTrackRef.current.url)
+                        if (videoId) {
+                            console.log('[YouTube] Worker-triggered Background Initialization...')
+                            initYTPlayer(videoId)
+                        }
                     }
                 }
             }
 
-            // 2. SoundCloud Watchdog
-            if (scWidgetRef.current && isSoundCloud) {
-                scWidgetRef.current.isPaused((paused: boolean) => {
+            // 2. Native Audio Watchdog
+            if ((isLC || isSC) && localAudioRef.current) {
+                if (localAudioRef.current.paused) {
                     const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                    if (paused && timeSinceChange > 2000) {
-                        scWidgetRef.current.play()
+                    if (timeSinceChange > 2000) {
+                        localAudioRef.current.play().catch(() => { })
+                    }
+                }
+            }
+
+            // 3. Spotify Watchdog
+            if (isSP && spotifyPlayerRef.current) {
+                spotifyPlayerRef.current.getCurrentState().then((s: any) => {
+                    if (s) {
+                        const isFinished = s.paused && s.position === 0 && s.repeat_mode === 0
+                        const isStalled = s.paused && !isFinished && Date.now() - trackChangeTimeRef.current > 3000
+
+                        if (isFinished) {
+                            console.log('[Spotify] Worker-detected track finish. Advancing...')
+                            nextRef.current(true)
+                        } else if (isStalled) {
+                            console.log('[Spotify] Worker-detected stall. Resuming...')
+                            spotifyPlayerRef.current?.resume()
+                        }
                     }
                 })
             }
@@ -196,7 +362,7 @@ export function GlobalPlayer() {
             worker.terminate()
             workerRef.current = null
         }
-    }, [hasMounted, isYoutube, isSoundCloud])
+    }, [hasMounted])
 
     useEffect(() => {
         if (isPlaying && (isYoutube || isSoundCloud || isSpotify)) {
@@ -224,12 +390,7 @@ export function GlobalPlayer() {
             } catch (e) { }
         }
 
-        // 2. SoundCloud
-        if (exclude !== 'soundcloud') {
-            try {
-                if (scWidgetRef.current?.pause) scWidgetRef.current.pause()
-            } catch (e) { }
-        }
+        // 2. SoundCloud (Unified with Native Audio)
 
         // 3. Spotify
         if (exclude !== 'spotify') {
@@ -238,12 +399,11 @@ export function GlobalPlayer() {
             } catch (e) { }
         }
 
-        // 4. Local
-        if (exclude !== 'local') {
+        // 4. Local & SoundCloud (Native Engine)
+        if (exclude !== 'local' && exclude !== 'soundcloud') {
             if (localAudioRef.current) {
                 localAudioRef.current.pause()
                 localAudioRef.current.currentTime = 0
-                localAudioRef.current.load() // Force immediate drop of old stream
             }
         }
     }, [])
@@ -297,164 +457,10 @@ export function GlobalPlayer() {
         }
 
         if (isEmbedPlatform) setShowVideo(true)
+
+        // CRITICAL: Update track change time on every change
+        trackChangeTimeRef.current = Date.now()
     }, [currentTrack, isEmbedPlatform, isLocal, isSpotify, isSoundCloud, stopAllPlayers])
-
-    // ─── YouTube Logic ───
-    const initYTPlayer = useCallback((videoId: string) => {
-        if (!window.YT || !window.YT.Player) {
-            if (!document.getElementById('youtube-sdk')) {
-                const script = document.createElement('script')
-                script.id = 'youtube-sdk'
-                script.src = 'https://www.youtube.com/iframe_api'
-                document.body.appendChild(script)
-            }
-            window.onYouTubeIframeAPIReady = () => initYTPlayer(videoId)
-            return
-        }
-
-        // Detect if player is alive and functional
-        const isPlayerHealthy = ytPlayerRef.current &&
-            typeof ytPlayerRef.current.loadVideoById === 'function' &&
-            typeof ytPlayerRef.current.getPlayerState === 'function' &&
-            typeof ytPlayerRef.current.playVideo === 'function' &&
-            typeof ytPlayerRef.current.setVolume === 'function'
-
-        if (isPlayerHealthy) {
-            try {
-                console.log('[YouTube] Reusing existing player for:', videoId)
-                setPlayReady(true)
-                setIsBuffering(true)
-
-                ytPlayerRef.current.loadVideoById({
-                    videoId: videoId,
-                    startSeconds: 0
-                })
-
-                // If isPlaying is true, we want to start it immediately.
-                if (isPlayingRef.current) {
-                    const p = ytPlayerRef.current
-                    if (p.playVideo) p.playVideo()
-
-                    // Background safety: Immediate and repeated play attempts
-                    let attempts = 0
-                    const forcePlay = () => {
-                        const state = p.getPlayerState?.()
-                        if (state !== 1 && attempts < 10 && isPlayingRef.current) {
-                            console.log('[YouTube] Background Reuse Play Attempt:', attempts + 1)
-                            p.playVideo?.()
-                            attempts++
-                            setTimeout(forcePlay, 500)
-                        }
-                    }
-                    setTimeout(forcePlay, 50)
-                }
-
-                // Sync volume
-                ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
-
-                // Track the change time to help interval ignore stale duration/time
-                trackChangeTimeRef.current = Date.now()
-                return
-            } catch (e) {
-                console.warn('[YouTube] Reuse failed, recreating player:', e)
-                ytPlayerRef.current = null
-            }
-        }
-
-        // If we need a new player, ensure the target div exists. 
-        // If the old one was an iframe, the API will handle replacing it if we provide the same ID.
-        if (!document.getElementById('yt-player')) {
-            console.error('[YouTube] Player target element not found')
-            return
-        }
-
-        ytPlayerRef.current = new window.YT.Player('yt-player', {
-            videoId: videoId,
-            playerVars: {
-                autoplay: 1,
-                controls: 1,
-                modestbranding: 1,
-                rel: 0,
-                enablejsapi: 1,
-                playsinline: 1, // Mandatory for mobile background/inline play
-                origin: typeof window !== 'undefined' ? window.location.origin : ''
-            },
-            events: {
-                onReady: (e: any) => {
-                    setPlayReady(true)
-                    setIsBuffering(false)
-                    if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
-                        e.target.playVideo()
-                    }
-                    if (typeof e.target.setVolume === 'function') {
-                        e.target.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
-                    }
-                    if (typeof e.target.getDuration === 'function') {
-                        const d = e.target.getDuration()
-                        if (d > 0) setDuration(d)
-                    }
-                    // Signal track change time for onReady too
-                    trackChangeTimeRef.current = Date.now()
-                },
-                onStateChange: (e: any) => {
-                    const state = e.data
-                    console.log('[YouTube] State Change:', state)
-
-                    if (state === 0) { // ENDED
-                        console.log('[YouTube] Video Finished, calling next')
-                        nextRef.current(true)
-                    }
-                    else if (state === 1) { // PLAYING
-                        setIsBuffering(false)
-                        setPlayerError(null)
-                        if (!isPlayingRef.current) resumeRef.current()
-
-                        if (typeof e.target.getDuration === 'function') {
-                            const d = e.target.getDuration()
-                            if (d > 0) setDuration(d)
-                        }
-                    } else if (state === 2) { // PAUSED
-                        // CRITICAL FOR BACKGROUND PLAY: 
-                        // If we hit a paused state but our intent is STILL to play (isPlayingRef.current is true),
-                        // we DO NOT call pauseRef.current(). Calling it would sync the 'Paused' state 
-                        // globally and break our watchdog recovery. 
-                        // Instead, we let the watchdog (in Global Progress Sync) try to resume it.
-                        console.log('[YouTube] State 2 (Paused) detected. isPlaying intent:', isPlayingRef.current)
-
-                        // We only sync back to global pause if the user is actually on the page 
-                        // and we want to allow external control (like media keys).
-                        // However, for mobile/backgrounding, it's safer to trust our internal state.
-                        if (!isPlayingRef.current) {
-                            pauseRef.current()
-                        }
-                    } else if (state === 3) { // BUFFERING
-                        setIsBuffering(true)
-                    } else if (state === 5 || state === -1) { // CUED / UNSTARTED
-                        // If it's loaded but not playing, and we want it to be playing, force it.
-                        if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
-                            e.target.playVideo()
-                        }
-                    }
-                },
-                onError: (e: any) => {
-                    const msg = getYouTubeErrorMessage(e.data)
-                    setPlayerError(msg)
-                    setIsBuffering(false)
-                    console.error('[YouTube] Error:', e.data, msg)
-
-                    // Auto-skip on fatal embed errors after a delay
-                    if (e.data === 150 || e.data === 101 || e.data === 100) {
-                        console.log('[YouTube] Fatal error, skipping track in 3s...')
-                        setTimeout(() => {
-                            if (currentTrackRef.current && (currentTrackRef.current.platform === 'youtube' || currentTrackRef.current.platform === 'ytmusic')) {
-                                nextRef.current(true)
-                            }
-                        }, 3000)
-                    }
-                }
-            }
-        })
-    }, [])
 
     // ─── Global Progress Sync ───
     useEffect(() => {
@@ -480,7 +486,7 @@ export function GlobalPlayer() {
                     if (total > 0) {
                         setDuration(Math.floor(total))
                         // Only update progress if playing AND NOT currently seeking/dragging
-                        if (state === 1 && !isSeeking) {
+                        if (state === 1 && !isSeekingRef.current) {
                             setProgress(current / total)
                         }
 
@@ -614,12 +620,8 @@ export function GlobalPlayer() {
         }
     }
 
-    const spotifyIntervalRef = useRef<any>(null)
-    const spotifyTokenRef = useRef(spotifyToken)
     useEffect(() => { spotifyTokenRef.current = spotifyToken }, [spotifyToken])
 
-    const lastSpotifyIdRef = useRef<string | null>(null)
-    const lastNextActionTimeRef = useRef<number>(0)
 
     const initSpotifyPlayer = useCallback((initialToken: string) => {
         if (spotifyPlayerRef.current || !window.Spotify) return
@@ -669,12 +671,19 @@ export function GlobalPlayer() {
             const isPaused = state.paused
 
             if (isPaused) {
-                // Background safety: If Spotify pauses but our intent is still to play,
-                // DO NOT sync the global state to paused. This prevents race conditions
-                // where the end-of-track pause kills the auto-switch logic.
-                if (!isPlayingRef.current && !isTransiting) pauseRef.current()
+                // If Spotify is paused but our UI thinks it's playing, sync it back
+                // unless we are in the middle of a track transition.
+                if (isPlayingRef.current && !isTransiting) {
+                    console.log('[Spotify] External Pause detected, syncing UI...')
+                    pauseRef.current()
+                } else if (!isPlayingRef.current && !isTransiting) {
+                    pauseRef.current()
+                }
             } else {
-                if (!isPlayingRef.current) resumeRef.current()
+                if (!isPlayingRef.current) {
+                    console.log('[Spotify] External Play detected, syncing UI...')
+                    resumeRef.current()
+                }
             }
 
             // 2. Sync Duration & Progress
@@ -699,7 +708,9 @@ export function GlobalPlayer() {
             if (!isPaused) {
                 spotifyIntervalRef.current = setInterval(() => {
                     player.getCurrentState().then((s: any) => {
-                        if (s) setProgress(s.position / s.duration)
+                        if (s && !isSeekingRef.current) {
+                            setProgress(s.position / s.duration)
+                        }
                     })
                 }, 1000)
             }
@@ -713,7 +724,6 @@ export function GlobalPlayer() {
         player.connect()
     }, [])
 
-    const trackChangeTimeRef = useRef<number>(0)
 
     useEffect(() => {
         if (!hasMounted) return
@@ -740,6 +750,10 @@ export function GlobalPlayer() {
             if (!isSpotify || !spotifyPlayerRef.current?._deviceId) return
             const trackId = currentTrack?.url.split('track/')[1]?.split('?')[0]
             if (!trackId || !spotifyToken) return
+
+            // CRITICAL: Explicitly pause the local SDK instance before starting a new track
+            // This prevents "bleeding" or hearing a second of the previous song.
+            try { await spotifyPlayerRef.current.pause() } catch (e) { }
 
             const attemptPlay = async (): Promise<boolean> => {
                 try {
@@ -798,9 +812,15 @@ export function GlobalPlayer() {
     // Sync Play/Pause with Spotify
     useEffect(() => {
         if (!spotifyPlayerRef.current || !isSpotify) return
+
+        // GUARD: If we just changed tracks, let the specialized playSpotifyTrack effect 
+        // handle the initial state. premature sync here causes previous-track audio bleed.
+        const timeSinceChange = Date.now() - trackChangeTimeRef.current
+        if (timeSinceChange < 1500) return
+
         if (isPlaying) spotifyPlayerRef.current.resume()
         else spotifyPlayerRef.current.pause()
-    }, [isPlaying, isSpotify, currentTrack?.url])
+    }, [isPlaying, isSpotify])
 
     // Sync Volume with Spotify
     useEffect(() => {
@@ -808,166 +828,70 @@ export function GlobalPlayer() {
         spotifyPlayerRef.current.setVolume(isMuted ? 0 : volume)
     }, [volume, isMuted, isSpotify])
 
-    // ─── SoundCloud Logic ───
+    // ─── SoundCloud Logic (API/SDK) ───
+    // ─── SoundCloud Logic (Backend Proxy Mode) ───
     useEffect(() => {
-        if (!isSoundCloud || !hasMounted) return
-
-        // Reset state for new track
-        setPlayReady(false)
-        setIsBuffering(true)
-        setProgress(0)
-        setDuration(0)
-
-        const setup = () => {
-            const iframe = document.getElementById('sc-iframe') as HTMLIFrameElement
-            if (!iframe || !window.SC) return
-            const widget = window.SC.Widget(iframe)
-            scWidgetRef.current = widget
-
-            // Unbind to prevent duplicates
-            widget.unbind(window.SC.Widget.Events.READY)
-            widget.unbind(window.SC.Widget.Events.FINISH)
-            widget.unbind(window.SC.Widget.Events.PLAY_PROGRESS)
-
-            widget.bind(window.SC.Widget.Events.READY, () => {
-                console.log('[SoundCloud] Player Ready')
-                setPlayReady(true)
-                setIsBuffering(false)
-                widget.setVolume(isMutedRef.current ? 0 : volumeRef.current * 100)
-                if (isPlayingRef.current) {
-                    widget.play()
-                    // Background tab safety: secondary attempt if first was blocked
-                    setTimeout(() => {
-                        if (isPlayingRef.current) {
-                            console.log('[SoundCloud] Secondary background play attempt...')
-                            widget.play()
-                        }
-                    }, 1000)
-                }
-                widget.getDuration((ms: number) => {
-                    if (ms) setDuration(ms / 1000)
-                })
-            })
-
-            widget.bind(window.SC.Widget.Events.PLAY, () => {
-                setIsBuffering(false)
-                setPlayerError(null)
-            })
-
-            widget.bind(window.SC.Widget.Events.PAUSE, () => {
-                // Background check: if we should be playing but hit a pause, it might be a transient block
-            })
-
-            widget.bind(window.SC.Widget.Events.FINISH, () => nextRef.current(true))
-
-            widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (data: any) => {
-                if (data.relativePosition !== undefined) {
-                    setProgress(data.relativePosition)
-                    if (data.currentPosition && data.relativePosition > 0) {
-                        setDuration(data.currentPosition / data.relativePosition / 1000)
-                    }
-                }
-            })
-
-            widget.bind(window.SC.Widget.Events.ERROR, () => {
-                setPlayerError('SoundCloud playback failed. This track might be restricted.')
-            })
+        if (!isSoundCloud || !hasMounted || !currentTrack?.url) {
+            setScStreamUrl(null)
+            return
         }
 
-        if (!window.SC) {
-            const scScriptId = 'soundcloud-widget-api'
-            if (!document.getElementById(scScriptId)) {
-                const script = document.createElement('script')
-                script.id = scScriptId
-                script.src = 'https://w.soundcloud.com/player/api.js'
-                script.onload = setup
-                document.body.appendChild(script)
-            }
-        } else {
-            const timer = setTimeout(setup, 300)
-            return () => clearTimeout(timer)
-        }
-    }, [isSoundCloud, hasMounted, currentTrack?.url])
+        // Synchronously clear old stream URL to prevent race conditions
+        setScStreamUrl(null)
+        const trackId = currentTrack.id
 
-    // SoundCloud Polling & Background Watchdog
-    useEffect(() => {
-        if (!isSoundCloud || !scWidgetRef.current) return
-        const interval = setInterval(() => {
-            const w = scWidgetRef.current
-            if (w && typeof w.getPosition === 'function') {
-                w.getPosition((ms: number) => {
-                    w.getDuration((total: number) => {
-                        if (ms && total) {
-                            setProgress(ms / total)
-                            setDuration(total / 1000)
-                        }
-                    })
-                })
+        const fetchStream = async () => {
+            setPlayReady(false)
+            setIsBuffering(true)
+            setProgress(0)
+            setDuration(0)
 
-                // --- AUTO-PLAY RECOVERY ---
-                // If we should be playing but the widget is paused, force it.
-                // This handles background tab throttles or transient autoplay blocks.
-                if (isPlayingRef.current && typeof w.isPaused === 'function') {
-                    w.isPaused((paused: boolean) => {
-                        const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                        if (paused && timeSinceChange > 2000) {
-                            console.log('[SoundCloud] Recovery: Forcing play state in background...')
-                            w.play()
-                            setPlayReady(true)
-                            setIsBuffering(false)
-                        }
-                    })
+            try {
+                const res = await fetch(`http://localhost:8000/soundcloud-resolve?url=${encodeURIComponent(currentTrack.url)}`)
+                const data = await res.json()
+
+                // Only update if we are still on the same track
+                if (currentTrackRef.current?.id === trackId && data.success && data.stream_url) {
+                    console.log('[SoundCloud] Backend resolved stream URL')
+                    setScStreamUrl(data.stream_url)
+                } else if (data.error) {
+                    throw new Error(data.error)
+                }
+            } catch (err) {
+                if (currentTrackRef.current?.id === trackId) {
+                    console.error('[SoundCloud] Resolve failed:', err)
+                    setPlayerError('SoundCloud API resolution failed. Please ensure backend is running.')
                 }
             }
-        }, 1000)
-        return () => clearInterval(interval)
-    }, [isSoundCloud, isPlaying, currentTrack?.url])
-
-    // Sync Play/Pause with SoundCloud
-    useEffect(() => {
-        if (!scWidgetRef.current || !isSoundCloud) return
-        try {
-            if (isPlaying) {
-                if (typeof scWidgetRef.current.play === 'function') scWidgetRef.current.play()
-            } else {
-                if (typeof scWidgetRef.current.pause === 'function') scWidgetRef.current.pause()
-            }
-        } catch (e) {
-            console.warn('[SoundCloud] Play/Pause sync failed:', e)
         }
-    }, [isPlaying, isSoundCloud])
 
-    // Sync Volume with SoundCloud
-    useEffect(() => {
-        if (!scWidgetRef.current || !isSoundCloud) return
-        try {
-            if (typeof scWidgetRef.current.setVolume === 'function') {
-                scWidgetRef.current.setVolume(isMuted ? 0 : volume * 100)
-            }
-        } catch (e) {
-            console.warn('[SoundCloud] Volume sync failed:', e)
-        }
-    }, [volume, isMuted, isSoundCloud])
+        fetchStream()
+    }, [isSoundCloud, hasMounted, currentTrack?.url, currentTrack?.id])
+
+
+
 
     // ─── Local Music Logic ───
     // 1. URL Change: Force a hard reload of the audio engine
     useEffect(() => {
-        if (!localAudioRef.current || !isLocal || !currentTrack?.url) return
+        if (!localAudioRef.current || (!isLocal && !isSoundCloud) || !currentTrack?.url) return
+        if (isSoundCloud && !scStreamUrl) return // Wait for proxy resolution
         const audio = localAudioRef.current
 
-        console.log('[LocalPlayer] Loading new local source:', currentTrack.url)
-        audio.load() // Force the browser to drop the old stream
+        console.log('[NativeAudio] Loading source:', isLocal ? currentTrack.url : scStreamUrl)
+        audio.load()
 
         if (isPlaying) {
             audio.play().catch(err => {
-                if (err.name !== 'AbortError') console.warn('[LocalPlayer] URL change play failed:', err)
+                if (err.name !== 'AbortError') console.warn('[NativeAudio] URL change play failed:', err)
             })
         }
-    }, [currentTrack?.url, isLocal])
+    }, [currentTrack?.url, isLocal, isSoundCloud, scStreamUrl])
 
     // 2. Play/Pause/Volume Sync
     useEffect(() => {
-        if (!localAudioRef.current || !isLocal) return
+        if (!localAudioRef.current || (!isLocal && !isSoundCloud)) return
+        if (isSoundCloud && !scStreamUrl) return // Wait for proxy resolution
         const audio = localAudioRef.current
         audio.volume = isMuted ? 0 : volume
 
@@ -1075,15 +999,6 @@ export function GlobalPlayer() {
                                 <div id="yt-player" className="w-full h-full" />
                             </div>
 
-                            {/* SoundCloud: Conditionally Rendered (Safe for Iframe-only) */}
-                            {isSoundCloud && (
-                                <iframe
-                                    id="sc-iframe"
-                                    src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(currentTrack.url)}&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&visual=true`}
-                                    className="w-full h-full border-0"
-                                    allow="autoplay"
-                                />
-                            )}
 
                             {/* Apple: Conditionally Rendered */}
                             {isApple && (
@@ -1117,17 +1032,20 @@ export function GlobalPlayer() {
                 </div>
             </div>
 
-            {/* Local audio element - Persistent source management */}
-            {isLocal && currentTrack && (
+            {/* Local & SoundCloud audio element - Persistent source management */}
+            {(isLocal || isSoundCloud) && currentTrack && (
                 <audio
                     ref={localAudioRef}
-                    src={currentTrack.url}
+                    src={isLocal ? currentTrack.url : (scStreamUrl || '')}
                     preload="auto"
                     autoPlay={isPlaying} // Native Handoff
                     onEnded={() => nextRef.current(true)}
                     onTimeUpdate={(e) => {
                         const a = e.currentTarget
-                        if (a.duration) { setProgress(a.currentTime / a.duration); setDuration(a.duration) }
+                        if (a.duration && !isSeekingRef.current) {
+                            setProgress(a.currentTime / a.duration)
+                            setDuration(a.duration)
+                        }
                     }}
                     onCanPlay={(e) => {
                         setIsBuffering(false)
@@ -1140,7 +1058,7 @@ export function GlobalPlayer() {
                     onPlaying={() => setIsBuffering(false)}
                     onError={(e) => {
                         console.error('[LocalPlayer] Audio Error:', e)
-                        setPlayerError('Failed to load local audio file.')
+                        setPlayerError('Audio playback failed. Please check the source or your network.')
                     }}
                 />
             )}
@@ -1155,7 +1073,13 @@ export function GlobalPlayer() {
                     <div className="flex items-center gap-4 w-1/4 min-w-0">
                         <div className="w-14 h-14 rounded-lg bg-surface2 border border-border overflow-hidden relative flex-shrink-0 group">
                             {currentTrack?.thumbnail ? (
-                                <Image src={currentTrack.thumbnail} alt={currentTrack.title || 'Track'} fill className="object-cover" />
+                                <Image
+                                    src={currentTrack.thumbnail}
+                                    alt={currentTrack.title || 'Track'}
+                                    fill
+                                    className="object-cover"
+                                    sizes="56px"
+                                />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-muted"><Music2 size={24} /></div>
                             )}
@@ -1222,9 +1146,12 @@ export function GlobalPlayer() {
                                     if (isYoutube && ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
                                         ytPlayerRef.current.seekTo(newProgress * duration, true)
                                     }
-                                    if (isSoundCloud && scWidgetRef.current) scWidgetRef.current.seekTo(newProgress * duration * 1000)
-                                    if (isSpotify && spotifyPlayerRef.current) spotifyPlayerRef.current.seek(newProgress * duration * 1000)
-                                    if (isLocal && localAudioRef.current) localAudioRef.current.currentTime = newProgress * duration
+                                    if (isSpotify && spotifyPlayerRef.current) {
+                                        spotifyPlayerRef.current.seek(newProgress * duration * 1000)
+                                    }
+                                    if (isSoundCloud || (isLocal && localAudioRef.current)) {
+                                        if (localAudioRef.current) localAudioRef.current.currentTime = newProgress * duration
+                                    }
                                 }}
                                 onValueCommit={() => {
                                     // Small delay before resuming sync to allow player to update its internal clock

@@ -167,7 +167,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (currentId) {
             const idx = tracks.findIndex(t => t.id === currentId)
             if (idx !== -1) {
-                console.log('[PlayerContext] Syncing currentIndex to:', idx)
                 setCurrentIndex(idx)
             }
         }

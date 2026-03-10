@@ -86,7 +86,13 @@ export function SortableTrackCard({ track, index, isPlaying, onPlay, onRemove, o
       {/* Thumbnail */}
       {track.thumbnail && (
         <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative">
-          <Image src={track.thumbnail} alt={track.title} fill className="object-cover" />
+          <Image
+            src={track.thumbnail}
+            alt={track.title}
+            fill
+            className="object-cover"
+            sizes="40px"
+          />
         </div>
       )}
 

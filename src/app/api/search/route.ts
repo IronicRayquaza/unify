@@ -213,8 +213,14 @@ export async function GET(req: NextRequest) {
         searchAppleMusic()
     ])
 
-    // Flatten results
-    const results = allResults.flat()
+    // Interleave results from different platforms for a more diverse mix
+    const results: any[] = []
+    const maxLen = Math.max(...allResults.map(r => r.length))
+    for (let i = 0; i < maxLen; i++) {
+        for (const platformResults of allResults) {
+            if (platformResults[i]) results.push(platformResults[i])
+        }
+    }
 
     return NextResponse.json({ results })
 }

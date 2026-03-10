@@ -847,7 +847,7 @@ export function GlobalPlayer() {
             setDuration(0)
 
             try {
-                const res = await fetch(`http://localhost:8000/soundcloud-resolve?url=${encodeURIComponent(currentTrack.url)}`)
+                const res = await fetch(`/api/soundcloud-resolve?url=${encodeURIComponent(currentTrack.url)}`)
                 const data = await res.json()
 
                 // Only update if we are still on the same track

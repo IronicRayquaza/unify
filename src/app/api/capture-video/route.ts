@@ -15,7 +15,8 @@ export async function POST(req: NextRequest) {
         if (!body.url) return NextResponse.json({ error: 'URL is required' }, { status: 400 })
 
         // Call our specialized Python extraction service
-        const response = await axios.post('http://localhost:8000/capture', {
+        const backendUrl = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000'
+        const response = await axios.post(`${backendUrl}/capture`, {
             ...body,
             mode: 'video'
         });

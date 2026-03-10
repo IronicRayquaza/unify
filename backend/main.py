@@ -14,9 +14,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+# Production CORS origins from environment variable
+# Railway/Production: Set CORS_ORIGINS=https://your-frontend.vercel.app
+CORS_ORIGINS_ENV = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=CORS_ORIGINS_ENV,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

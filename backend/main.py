@@ -15,6 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+@app.get("/")
+async def health_check():
+    return {"status": "alive", "message": "Unify Backend is running"}
+
 # Production CORS origins from environment variable
 CORS_ORIGINS_ENV = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
 

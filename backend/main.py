@@ -6,16 +6,15 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import yt_dlp
 from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv(dotenv_path=".env.local")
+# Load environment variables
+load_dotenv() # Loads .env
+load_dotenv(dotenv_path=".env.local") # Loads .env.local if exists
 
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
 # Production CORS origins from environment variable
-# Railway/Production: Set CORS_ORIGINS=https://your-frontend.vercel.app
 CORS_ORIGINS_ENV = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
 
 app.add_middleware(
@@ -26,10 +25,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-supabase: Client = create_client(
-    os.environ.get("NEXT_PUBLIC_SUPABASE_URL"),
-    os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-)
+# Supabase Configuration with Validation
+SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("❌ ERROR: Missing Supabase Environment Variables!")
+    print("Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in your hosting dashboard.")
+    # We don't crash immediately so the logs can be read easily
+else:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class CaptureRequest(BaseModel):
     url: str
@@ -145,4 +150,6 @@ async def capture_media(request: CaptureRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Important: hosting platforms pass the port as an environment variable
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

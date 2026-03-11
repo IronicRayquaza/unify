@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import yt_dlp
 from supabase import create_client, Client
+from dotenv import load_dotenv
 # Load environment variables
 load_dotenv() # Loads .env
 load_dotenv(dotenv_path=".env.local") # Loads .env.local if exists

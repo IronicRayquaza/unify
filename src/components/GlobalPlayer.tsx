@@ -427,16 +427,16 @@ export function GlobalPlayer() {
         const currentPlatform = currentTrack.platform
         const isPlatformChanging = !isSameEngine(prevPlatformRef.current, currentPlatform)
 
-        // For same-engine local or Spotify skips, we NEED a full stop/pause to avoid audio leaks.
-        if (!isPlatformChanging && (currentPlatform === 'local' || currentPlatform === 'spotify')) {
-            stopAllPlayers()
-        } else if (isPlatformChanging) {
-            console.log('[GlobalPlayer] Platform Handoff: Overlapping session...')
+        // ALWAYS stop existing players when a new track starts.
+        // This prevents audio "leaks" or overlapping sessions during transitions.
+        if (isPlatformChanging) {
+            console.log('[GlobalPlayer] Platform Handoff: Cleaning up previous engine...')
+            // Give the new engine a head start, then kill the old ones
             setTimeout(() => {
                 if (currentTrackRef.current?.id === currentTrack.id) {
                     stopAllPlayers(currentPlatform)
                 }
-            }, 1500)
+            }, 1000)
         } else {
             // Same engine (e.g. YT -> YT), only stop other engines
             stopAllPlayers(currentPlatform)

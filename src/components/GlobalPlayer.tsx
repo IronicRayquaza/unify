@@ -654,7 +654,7 @@ export function GlobalPlayer() {
 
             const now = Date.now()
             const timeSinceChange = now - trackChangeTimeRef.current
-            const isTransiting = timeSinceChange < 2000
+            const isTransiting = timeSinceChange < 3500 // Extended guard for slow SDK settlement
 
             // CRITICAL: Only process Spotify events if we are actually ON the Spotify platform
             // This prevents "Autoplay" or background Spotify activity from hijacking the UI
@@ -1043,10 +1043,10 @@ export function GlobalPlayer() {
             </div>
 
             {/* Local & SoundCloud audio element - Persistent source management */}
-            {(isLocal || isSoundCloud) && currentTrack && (
+            {(isLocal || (isSoundCloud && scStreamUrl)) && currentTrack && (
                 <audio
                     ref={localAudioRef}
-                    src={isLocal ? currentTrack.url : (scStreamUrl || '')}
+                    src={isLocal ? currentTrack.url : (scStreamUrl as string)}
                     preload="auto"
                     autoPlay={isPlaying} // Native Handoff
                     onEnded={() => nextRef.current(true)}
@@ -1080,7 +1080,11 @@ export function GlobalPlayer() {
                     onWaiting={() => setIsBuffering(true)}
                     onPlaying={() => setIsBuffering(false)}
                     onError={(e) => {
-                        console.error('[LocalPlayer] Audio Error:', e)
+                        const err = e.currentTarget.error
+                        console.error('[LocalPlayer] Audio Error Object:', err)
+                        if (err) {
+                            console.error(`[LocalPlayer] Code: ${err.code}, Message: ${err.message}`)
+                        }
                         setPlayerError('Audio playback failed. Please check the source or your network.')
                     }}
                 />

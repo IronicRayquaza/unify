@@ -77,6 +77,47 @@ async def resolve_soundcloud(url: str):
         print(f"[Backend] SoundCloud Resolve Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+from fastapi import Request
+from fastapi.responses import StreamingResponse
+import httpx
+
+@app.get("/soundcloud-stream")
+async def stream_soundcloud(url: str, request: Request):
+    """Proxies the audio stream to bypass CloudFront IP locks and supports Range requests for seeking."""
+    print(f"[Backend] Proxying stream URL...")
+    
+    headers = {}
+    range_header = request.headers.get("range")
+    if range_header:
+        headers["range"] = range_header
+
+    client = httpx.AsyncClient()
+    
+    try:
+        req = client.build_request("GET", url, headers=headers)
+        r = await client.send(req, stream=True)
+        
+        response_headers = {}
+        for k, v in r.headers.items():
+            if k.lower() in ["content-type", "content-length", "content-range", "accept-ranges"]:
+                response_headers[k] = v
+
+        async def proxy_generator():
+            async for chunk in r.aiter_bytes(chunk_size=65536):
+                yield chunk
+            await client.aclose()
+
+        return StreamingResponse(
+            proxy_generator(),
+            status_code=r.status_code,
+            headers=response_headers,
+            background=client.aclose
+        )
+    except Exception as e:
+        await client.aclose()
+        print(f"[Backend] Stream Proxy Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Stream proxy failed.")
+
 @app.post("/capture")
 async def capture_media(request: CaptureRequest):
     start_time = time.time()

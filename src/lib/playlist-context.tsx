@@ -173,64 +173,43 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
     }, [fetchPlaylists])
 
     const removeTrack = useCallback(async (playlistId: string, trackId: string) => {
+        if (!state) return
         try {
-            // Get track metadata before deleting the junction record
-            const { data: trackData, error: trackFetchError } = await supabase
-                .from('tracks')
-                .select('*')
-                .eq('id', trackId)
-                .single()
+            // Find the track in our state to get the platform and libraryTrackId
+            const playlist = state.playlists.find(p => p.id === playlistId)
+            const track = playlist?.tracks.find(t => t.id === trackId)
+            if (!track) return
 
-            if (trackFetchError) throw trackFetchError
+            const libTrackId = track.libraryTrackId || trackId // Fallback for old data
 
-            // 1. Delete the connection from playlist_tracks
+            // 1. Delete the connection from playlist_tracks using the junction ID
             const { error: deleteError } = await supabase
                 .from('playlist_tracks')
                 .delete()
-                .eq('playlist_id', playlistId)
-                .eq('track_id', trackId)
+                .eq('id', trackId)
 
             if (deleteError) throw deleteError
 
             // 2. If it's a 'local' track, check if it's now orphaned (no other playlists use it)
-            if (trackData.platform === 'local') {
+            if (track.platform === 'local') {
                 const { count, error: countError } = await supabase
                     .from('playlist_tracks')
                     .select('*', { count: 'exact', head: true })
-                    .eq('track_id', trackId)
+                    .eq('track_id', libTrackId)
 
                 if (countError) throw countError
 
                 if (count === 0) {
                     console.log('[Cleanup] Last reference removed. Deleting file from bucket...')
-
-                    // Extract path from storage URL: .../object/public/songs/(captures/filename.mp3)
-                    const url = trackData.url
+                    const url = track.url
                     if (url.includes('/songs/')) {
                         const storagePath = url.split('/songs/')[1]
                         const decodedPath = decodeURIComponent(storagePath)
-
-                        const { error: storageError } = await supabase
-                            .storage
-                            .from('songs')
-                            .remove([decodedPath])
-
-                        if (storageError) {
-                            console.warn('[Cleanup] Storage deletion failed or file already gone:', storageError)
-                        } else {
-                            console.log('[Cleanup] File removed from storage bucket.')
-                        }
+                        await supabase.storage.from('songs').remove([decodedPath])
                     }
 
                     // Delete the track record itself from the global library
-                    const { error: finalDeleteError } = await supabase
-                        .from('tracks')
-                        .delete()
-                        .eq('id', trackId)
-
-                    if (finalDeleteError) {
-                        console.warn('[Cleanup] Failed to delete track record:', finalDeleteError)
-                    }
+                    await supabase.from('tracks').delete().eq('id', libTrackId)
                 }
             }
 
@@ -246,7 +225,7 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
         } catch (error) {
             console.error('Error removing track:', error)
         }
-    }, [])
+    }, [state])
 
     const reorderTracks = useCallback(async (playlistId: string, tracks: Track[]) => {
         try {
@@ -257,9 +236,9 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
                 ),
             }) : null)
 
-            const updates = tracks.map((t, index) => ({ playlist_id: playlistId, track_id: t.id, position: index }))
+            const updates = tracks.map((t, index) => ({ id: t.id, position: index }))
             for (const update of updates) {
-                await supabase.from('playlist_tracks').update({ position: update.position }).eq('playlist_id', playlistId).eq('track_id', update.track_id)
+                await supabase.from('playlist_tracks').update({ position: update.position }).eq('id', update.id)
             }
         } catch (error) {
             console.error('Error reordering tracks:', error)
@@ -305,6 +284,7 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
 
     const updateTrack = useCallback(async (playlistId: string, trackId: string, updates: Partial<Track>) => {
         try {
+            // Optimistic update
             setState(s => s ? ({
                 ...s,
                 playlists: s.playlists.map(p =>
@@ -318,18 +298,23 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
                 ),
             }) : null)
 
+            // Find the track in state to get libraryTrackId
+            const playlist = state?.playlists.find(p => p.id === playlistId)
+            const track = playlist?.tracks.find(t => t.id === trackId)
+            const libTrackId = track?.libraryTrackId || trackId
+
             const { error } = await supabase.from('tracks').update({
                 title: updates.title,
                 artist: updates.artist,
                 url: updates.url,
                 thumbnail: updates.thumbnail,
                 duration: updates.duration ? parseInt(updates.duration as any) : undefined
-            }).eq('id', trackId)
+            }).eq('id', libTrackId)
             if (error) throw error
         } catch (error) {
             console.error('Error updating track:', error)
         }
-    }, [])
+    }, [state])
 
     return (
         <PlaylistContext.Provider value={{

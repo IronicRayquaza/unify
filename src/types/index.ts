@@ -10,6 +10,7 @@ export interface Track {
   duration?: string
   embedUrl?: string
   addedAt: string
+  libraryTrackId?: string
 }
 
 export interface Playlist {

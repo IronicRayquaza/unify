@@ -13,6 +13,10 @@ export async function GET(req: NextRequest) {
             params: { url }
         })
 
+        if (response.data.success && response.data.stream_url) {
+            response.data.stream_url = `${backendUrl}/soundcloud-stream?url=${encodeURIComponent(response.data.stream_url)}`
+        }
+
         return NextResponse.json(response.data)
     } catch (error: any) {
         console.error('[SoundCloud Resolve Proxy Error]:', error.response?.data || error.message)

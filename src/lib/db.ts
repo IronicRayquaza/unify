@@ -30,6 +30,7 @@ export async function getUserPlaylists(userId: string) {
             is_public,
             created_at,
             playlist_tracks (
+                id,
                 position,
                 track:tracks (
                     id,
@@ -53,9 +54,13 @@ export async function getUserPlaylists(userId: string) {
         name: p.name,
         tracks: p.playlist_tracks
             .sort((a: any, b: any) => a.position - b.position)
-            .map((pt: any) => pt.track),
+            .map((pt: any) => ({
+                ...pt.track,
+                id: pt.id, // CRITICAL: Use the junction ID as the unique instance ID
+                libraryTrackId: pt.track.id // Keep the original track ID as metadata
+            })),
         createdAt: p.created_at,
-        updatedAt: p.created_at // Assuming updatedAt matches for now
+        updatedAt: p.created_at
     }))
 }
 

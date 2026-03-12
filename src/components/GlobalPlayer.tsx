@@ -654,7 +654,9 @@ export function GlobalPlayer() {
 
             const now = Date.now()
             const timeSinceChange = now - trackChangeTimeRef.current
-            const isTransiting = timeSinceChange < 3500 // Extended guard for slow SDK settlement
+            const timeSinceLastNextAction = now - lastNextActionTimeRef.current
+            // Determine if we are transiting based on UI track changes OR recent auto-next actions
+            const isTransiting = timeSinceChange < 3500 || timeSinceLastNextAction < 3500
 
             // CRITICAL: Only process Spotify events if we are actually ON the Spotify platform
             // This prevents "Autoplay" or background Spotify activity from hijacking the UI
@@ -668,6 +670,10 @@ export function GlobalPlayer() {
             const currentTrackData = state.track_window?.current_track
             const trackId = currentTrackData?.id
             const expectedTrackId = currentTrackRef.current?.url.split('track/')[1]?.split('?')[0]
+            
+            // Detect natural end of track
+            const trackIdFromSDK = state.track_window?.current_track?.id
+            const isEndOfTrack = state.position === 0 && state.paused && state.repeat_mode === 0
 
             // SAFEGUARD: If we are in the middle of a track change and the SDK is reporting 
             // state for a track ID that doesn't match our expected one, ignore it and force pause.
@@ -682,12 +688,12 @@ export function GlobalPlayer() {
 
             if (isPaused) {
                 // If Spotify is paused but our UI thinks it's playing, sync it back
-                // unless we are in the middle of a track transition.
-                if (isPlayingRef.current && !isTransiting) {
+                // unless we are transiting OR the track naturally finished.
+                if (isPlayingRef.current && !isTransiting && !isEndOfTrack) {
                     console.log('[Spotify] External Pause detected, syncing UI...')
                     pauseRef.current()
                 } else if (!isPlayingRef.current && !isTransiting) {
-                    pauseRef.current()
+                    // Already paused, ignore
                 }
             } else {
                 if (!isPlayingRef.current) {
@@ -699,14 +705,10 @@ export function GlobalPlayer() {
             // 2. Sync Duration & Progress
             setDuration(state.duration / 1000)
 
-            // 4. Update track ID ref to detect internal changes
-            const trackIdFromSDK = state.track_window?.current_track?.id
-            const isEndOfTrack = state.position === 0 && isPaused && state.repeat_mode === 0
-
+            // 4. Handle auto-next for end of track
             if (isEndOfTrack && isPlayingRef.current && !isTransiting) {
                 if (trackIdFromSDK === expectedTrackId) {
-                    const timeSinceLastNext = now - lastNextActionTimeRef.current
-                    if (timeSinceLastNext > 2000) {
+                    if (timeSinceLastNextAction > 2000) {
                         lastNextActionTimeRef.current = now
                         nextRef.current(true)
                     }

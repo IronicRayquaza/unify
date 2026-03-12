@@ -237,43 +237,49 @@ export function GlobalPlayer() {
 
     // ─── Background Audio Heartbeat (AudioContext) ───
     // Maintains "Audible" status for the tab to prevent aggressive CPU/Timer throttling
+    const heartbeatRef = useRef<{ ctx: AudioContext, osc: OscillatorNode } | null>(null)
+
     useEffect(() => {
         if (!hasMounted) return
 
-        let ctx: AudioContext | null = null
-        let osc: OscillatorNode | null = null
-
         const startHeartbeat = async () => {
-            // Keep heartbeat running as long as a track is loaded, even if paused, 
-            // to ensure transitions between platforms (which involve momentary pauses) 
-            // aren't killed by the browser.
-            if (!currentTrackRef.current) return
-
+            if (heartbeatRef.current) return
             try {
                 const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext
-                ctx = new AudioContextClass()
-                if (!ctx) return
-
-                osc = ctx.createOscillator()
+                const ctx = new AudioContextClass()
+                const osc = ctx.createOscillator()
                 const gain = ctx.createGain()
 
                 osc.type = 'sine'
                 osc.frequency.setValueAtTime(1, ctx.currentTime)
-                gain.gain.setValueAtTime(0.0001, ctx.currentTime) // Inaudible but "audible" to browser
+                gain.gain.setValueAtTime(0.0001, ctx.currentTime) 
                 osc.connect(gain)
                 gain.connect(ctx.destination)
                 if (ctx.state === 'suspended') await ctx.resume()
                 osc.start()
+                heartbeatRef.current = { ctx, osc }
+                console.log('[Heartbeat] Persistent Background Protection Active')
             } catch (e) { }
         }
 
         startHeartbeat()
 
         return () => {
-            if (osc) { try { osc.stop() } catch (e) { } }
-            if (ctx) { try { ctx.close() } catch (e) { } }
+            if (heartbeatRef.current) {
+                const { ctx, osc } = heartbeatRef.current
+                try { osc.stop() } catch (e) { }
+                try { ctx.close() } catch (e) { }
+                heartbeatRef.current = null
+            }
         }
-    }, [hasMounted, currentTrack?.id]) // Restart on track change to stay fresh
+    }, [hasMounted])
+
+    // Poke heartbeat on track change
+    useEffect(() => {
+        if (heartbeatRef.current?.ctx.state === 'suspended') {
+            heartbeatRef.current.ctx.resume().catch(() => { })
+        }
+    }, [currentTrack?.id])
 
     // ─── Background Watchdog Worker ───
     // This worker runs independently of main-thread throttling to trigger recovery logic
@@ -330,10 +336,14 @@ export function GlobalPlayer() {
 
             // 2. Native Audio Watchdog
             if ((isLC || isSC) && localAudioRef.current) {
-                if (localAudioRef.current.paused) {
+                const audio = localAudioRef.current
+                if (audio.paused && isPlayingRef.current) {
                     const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                    if (timeSinceChange > 2000) {
-                        localAudioRef.current.play().catch(() => { })
+                    // Only attempt if not obviously finished
+                    const isFinished = audio.duration > 0 && (audio.duration - audio.currentTime) < 1
+                    if (timeSinceChange > 2000 && !isFinished) {
+                        console.log('[NativeAudio] Watchdog: Attempting background recovery...')
+                        audio.play().catch(() => { })
                     }
                 }
             }
@@ -1051,7 +1061,20 @@ export function GlobalPlayer() {
                         setIsBuffering(false)
                         setPlayReady(true)
                         if (isPlayingRef.current) {
-                            e.currentTarget.play().catch(() => { })
+                            const audio = e.currentTarget
+                            audio.play().catch(() => { })
+                            
+                            // Secondary attempt for background transitions
+                            let attempts = 0
+                            const forcePlay = () => {
+                                if (audio.paused && attempts < 15 && isPlayingRef.current) {
+                                    console.log('[NativeAudio] Background Play Attempt:', attempts + 1)
+                                    audio.play().catch(() => { })
+                                    attempts++
+                                    setTimeout(forcePlay, 500)
+                                }
+                            }
+                            setTimeout(forcePlay, 100)
                         }
                     }}
                     onWaiting={() => setIsBuffering(true)}

@@ -281,6 +281,72 @@ export function GlobalPlayer() {
         }
     }, [currentTrack?.id])
 
+    // ─── Page Visibility Recovery ───
+    // When the tab comes back into view after being minimized/hidden, immediately
+    // run a catch-up check. This handles cases where onended fired while the tab
+    // was throttled and the event was silently dropped by the browser.
+    useEffect(() => {
+        if (!hasMounted) return
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState !== 'visible') return
+            if (!isPlayingRef.current || !currentTrackRef.current) return
+
+            const platform = currentTrackRef.current.platform
+            const isYT = platform === 'youtube' || platform === 'ytmusic'
+            const isLC = platform === 'local'
+            const isSC = platform === 'soundcloud'
+            const isSP = platform === 'spotify'
+
+            console.log('[Visibility] Tab became visible. Running recovery check...')
+
+            // YouTube: check if video ended but state event was missed
+            if (isYT && ytPlayerRef.current) {
+                try {
+                    const state = ytPlayerRef.current.getPlayerState?.()
+                    if (state === 0) {
+                        // YT.PlayerState.ENDED
+                        console.log('[Visibility] YouTube ended while hidden. Advancing...')
+                        nextRef.current(true)
+                    } else if (state !== 1 && state !== 3) {
+                        // Not playing or buffering - try to recover
+                        ytPlayerRef.current.playVideo?.()
+                    }
+                } catch (e) { }
+            }
+
+            // Local / SoundCloud: check if audio ended while hidden
+            if ((isLC || isSC) && localAudioRef.current) {
+                const audio = localAudioRef.current
+                const isAtEnd = audio.duration > 0 && (audio.duration - audio.currentTime) < 1.5
+                if (isAtEnd && audio.paused) {
+                    console.log('[Visibility] Native audio ended while hidden. Advancing...')
+                    nextRef.current(true)
+                } else if (audio.paused && !isAtEnd) {
+                    audio.play().catch(() => { })
+                }
+            }
+
+            // Spotify: check if track ended while hidden
+            if (isSP && spotifyPlayerRef.current) {
+                spotifyPlayerRef.current.getCurrentState().then((s: any) => {
+                    if (s && s.paused && s.position === 0 && s.repeat_mode === 0) {
+                        console.log('[Visibility] Spotify ended while hidden. Advancing...')
+                        nextRef.current(true)
+                    }
+                }).catch(() => { })
+            }
+
+            // Poke AudioContext heartbeat back awake
+            if (heartbeatRef.current?.ctx.state === 'suspended') {
+                heartbeatRef.current.ctx.resume().catch(() => { })
+            }
+        }
+
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }, [hasMounted])
+
     // ─── Background Watchdog Worker ───
     // This worker runs independently of main-thread throttling to trigger recovery logic
     const workerRef = useRef<Worker | null>(null)
@@ -339,9 +405,14 @@ export function GlobalPlayer() {
                 const audio = localAudioRef.current
                 if (audio.paused && isPlayingRef.current) {
                     const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                    // Only attempt if not obviously finished
-                    const isFinished = audio.duration > 0 && (audio.duration - audio.currentTime) < 1
-                    if (timeSinceChange > 2000 && !isFinished) {
+                    const isAtEnd = audio.duration > 0 && (audio.duration - audio.currentTime) < 1.5
+
+                    if (isAtEnd && timeSinceChange > 2000) {
+                        // Track finished but onended was swallowed — force advance
+                        console.log('[NativeAudio] Watchdog: Track ended without onended event. Advancing...')
+                        nextRef.current(true)
+                    } else if (!isAtEnd && timeSinceChange > 2000) {
+                        // Stalled mid-track — try to resume playback
                         console.log('[NativeAudio] Watchdog: Attempting background recovery...')
                         audio.play().catch(() => { })
                     }
@@ -375,12 +446,12 @@ export function GlobalPlayer() {
     }, [hasMounted])
 
     useEffect(() => {
-        if (isPlaying && (isYoutube || isSoundCloud || isSpotify)) {
+        if (isPlaying && (isYoutube || isSoundCloud || isSpotify || isLocal)) {
             workerRef.current?.postMessage('start')
         } else {
             workerRef.current?.postMessage('stop')
         }
-    }, [isPlaying, isYoutube, isSoundCloud, isSpotify])
+    }, [isPlaying, isYoutube, isSoundCloud, isSpotify, isLocal])
 
     // Cleanup on logout
     useEffect(() => {

@@ -1,0 +1,7 @@
+﻿
+InputObject                                                  SideIndicator
+-----------                                                  -------------
+d:\unify-nextjs\unify-widget\src\components\GlobalPlayer.tsx =>           
+d:\unify-nextjs\unify\src\components\GlobalPlayer.tsx        <=           
+
+

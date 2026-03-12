@@ -65,15 +65,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const pause = useCallback(() => setIsPlaying(false), [])
     const resume = useCallback(() => setIsPlaying(true), [])
 
-    const lastActionTimeRef = useRef(0)
+    const lastManualNextTimeRef = useRef(0)
+    const lastAutoNextTimeRef = useRef(0)
 
     const next = useCallback((isAuto = false) => {
         const now = Date.now()
-        if (now - lastActionTimeRef.current < 1000) {
-            console.log('[PlayerContext] Throttle: Skipping rapidly repeated next() call')
-            return
+
+        if (isAuto) {
+            // Deduplicate rapid auto-advance (e.g., watchdog + onended firing close together)
+            if (now - lastAutoNextTimeRef.current < 1500) {
+                console.log('[PlayerContext] Auto-next dedupe: ignoring rapid auto call')
+                return
+            }
+            lastAutoNextTimeRef.current = now
+        } else {
+            // Throttle manual double-clicks only
+            if (now - lastManualNextTimeRef.current < 500) {
+                console.log('[PlayerContext] Throttle: Skipping rapidly repeated manual next() call')
+                return
+            }
+            lastManualNextTimeRef.current = now
         }
-        lastActionTimeRef.current = now
 
         if (queue.length === 0) return
 

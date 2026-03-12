@@ -71,7 +71,19 @@ export default function CallbackPage() {
                         localStorage.setItem('spotify_token_expiry', expiryTime.toString())
 
                         setStatus('Success! Redirecting...')
-                        setTimeout(() => window.location.href = '/dashboard', 500)
+
+                        if (window.opener) {
+                            window.opener.postMessage({
+                                type: 'spotify-auth',
+                                accessToken: data.access_token,
+                                refreshToken: data.refresh_token,
+                                expiresIn: data.expires_in
+                            }, '*');
+                            setStatus('Connected! Closing window...');
+                            setTimeout(() => window.close(), 1000);
+                        } else {
+                            setTimeout(() => window.location.href = '/dashboard', 500)
+                        }
                     } else {
                         throw new Error('No access token in response')
                     }
@@ -90,7 +102,13 @@ export default function CallbackPage() {
                 const token = params.get('access_token')
                 if (token) {
                     localStorage.setItem('spotify_access_token', token)
-                    window.location.href = '/dashboard'
+                    if (window.opener) {
+                        setStatus('Connected! Closing window...');
+                        window.opener.postMessage({ type: 'spotify-auth', accessToken: token }, '*');
+                        setTimeout(() => window.close(), 1000);
+                    } else {
+                        window.location.href = '/dashboard'
+                    }
                     return
                 }
             }

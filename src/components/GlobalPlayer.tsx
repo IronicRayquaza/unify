@@ -101,6 +101,8 @@ export function GlobalPlayer() {
     const trackChangeTimeRef = useRef<number>(0)
     const lastSpotifyIdRef = useRef<string | null>(null)
     const lastNextActionTimeRef = useRef<number>(0)
+    // Blocks player_state_changed from reacting during Spotify track-start sequence
+    const spotifyTransitionActiveRef = useRef(false)
     const spotifyTokenRef = useRef(spotifyToken)
 
     useEffect(() => { setHasMounted(true) }, [])
@@ -723,6 +725,15 @@ export function GlobalPlayer() {
         player.addListener('player_state_changed', (state: any) => {
             if (!state) return
 
+            // CRITICAL: If we are in the middle of starting a new Spotify track
+            // (the transition sequence calls pause() before play/), block ALL
+            // state events until the sequence completes. This prevents the pause()
+            // call from being misread as a user-initiated pause.
+            if (spotifyTransitionActiveRef.current) {
+                console.log('[Spotify] Ignoring state event during transition (spotifyTransitionActive)')
+                return
+            }
+
             const now = Date.now()
             const timeSinceChange = now - trackChangeTimeRef.current
             const timeSinceLastNextAction = now - lastNextActionTimeRef.current
@@ -741,16 +752,15 @@ export function GlobalPlayer() {
             const currentTrackData = state.track_window?.current_track
             const trackId = currentTrackData?.id
             const expectedTrackId = currentTrackRef.current?.url.split('track/')[1]?.split('?')[0]
-            
+
             // Detect natural end of track
             const trackIdFromSDK = state.track_window?.current_track?.id
             const isEndOfTrack = state.position === 0 && state.paused && state.repeat_mode === 0
 
-            // SAFEGUARD: If we are in the middle of a track change and the SDK is reporting 
-            // state for a track ID that doesn't match our expected one, ignore it and force pause.
+            // SAFEGUARD: If we are in the middle of a track change and the SDK is reporting
+            // state for a track ID that doesn't match our expected one, ignore it.
             if (isTransiting && trackId && expectedTrackId && trackId !== expectedTrackId) {
-                console.log('[Spotify] Ignoring state for stale track:', trackId)
-                if (!state.paused) player.pause()
+                console.log('[Spotify] Ignoring state for stale track during transition:', trackId)
                 return
             }
 
@@ -763,8 +773,6 @@ export function GlobalPlayer() {
                 if (isPlayingRef.current && !isTransiting && !isEndOfTrack) {
                     console.log('[Spotify] External Pause detected, syncing UI...')
                     pauseRef.current()
-                } else if (!isPlayingRef.current && !isTransiting) {
-                    // Already paused, ignore
                 }
             } else {
                 if (!isPlayingRef.current) {
@@ -776,7 +784,7 @@ export function GlobalPlayer() {
             // 2. Sync Duration & Progress
             setDuration(state.duration / 1000)
 
-            // 4. Handle auto-next for end of track
+            // 3. Handle auto-next for end of track
             if (isEndOfTrack && isPlayingRef.current && !isTransiting) {
                 if (trackIdFromSDK === expectedTrackId) {
                     if (timeSinceLastNextAction > 2000) {
@@ -786,7 +794,7 @@ export function GlobalPlayer() {
                 }
             }
 
-            // 5. Real-time Progress Tracking
+            // 4. Real-time Progress Tracking
             clearInterval(spotifyIntervalRef.current)
             if (!isPaused) {
                 spotifyIntervalRef.current = setInterval(() => {
@@ -825,85 +833,115 @@ export function GlobalPlayer() {
 
     // Effect to play track when currentTrack changes to Spotify
     useEffect(() => {
+        if (!isSpotify || !hasMounted) return
+
         let retryCount = 0
-        const maxRetries = 2
-        trackChangeTimeRef.current = Date.now()
+        const maxRetries = 3
+        let cancelled = false
 
         const playSpotifyTrack = async () => {
-            if (!isSpotify || !spotifyPlayerRef.current?._deviceId) return
+            if (!spotifyPlayerRef.current?._deviceId) return
             const trackId = currentTrack?.url.split('track/')[1]?.split('?')[0]
             if (!trackId || !spotifyToken) return
 
-            // CRITICAL: Explicitly pause the local SDK instance before starting a new track
-            // This prevents "bleeding" or hearing a second of the previous song.
-            try { await spotifyPlayerRef.current.pause() } catch (e) { }
+            // Block player_state_changed from reacting to intermediate pause/play events
+            // during the entire start sequence. This prevents the pre-play pause()
+            // call from being misread as a user-initiated external pause.
+            spotifyTransitionActiveRef.current = true
+            lastNextActionTimeRef.current = Date.now() // also set transition window
+            trackChangeTimeRef.current = Date.now()
 
-            const attemptPlay = async (): Promise<boolean> => {
-                try {
-                    const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${spotifyPlayerRef.current._deviceId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({ uris: [`spotify:track:${trackId}`] }),
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${spotifyToken}`
+            try {
+                // Stop any current playback cleanly
+                try { await spotifyPlayerRef.current.pause() } catch (e) { }
+                if (cancelled) return
+
+                const attemptPlay = async (): Promise<boolean> => {
+                    try {
+                        const res = await fetch(
+                            `https://api.spotify.com/v1/me/player/play?device_id=${spotifyPlayerRef.current._deviceId}`,
+                            {
+                                method: 'PUT',
+                                body: JSON.stringify({ uris: [`spotify:track:${trackId}`] }),
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${spotifyTokenRef.current || spotifyToken}`
+                                }
+                            }
+                        )
+
+                        if (res.status === 404) return false
+
+                        if (!res.ok) {
+                            const errData = await res.json().catch(() => ({}))
+                            if (errData.error?.message === 'Player command failed: No active device found') return false
+                            throw new Error(errData.error?.message || 'Play failed')
                         }
-                    })
 
-                    if (res.status === 404) {
-                        // Device might be "gone" if we swapped rapidly, wait and retry
+                        return true
+                    } catch (err) {
+                        console.error('[Spotify] Play Attempt Failed:', err)
                         return false
                     }
+                }
 
-                    if (!res.ok) {
-                        const errData = await res.json().catch(() => ({}))
-                        if (errData.error?.message === 'Player command failed: No active device found') return false
-                        throw new Error(errData.error?.message || 'Play failed')
+                // Small initial delay to let the SDK settle after the pause
+                await new Promise(r => setTimeout(r, 200))
+                if (cancelled) return
+
+                while (retryCount <= maxRetries) {
+                    const success = await attemptPlay()
+                    if (cancelled) return
+                    if (success) break
+                    retryCount++
+                    if (retryCount <= maxRetries) {
+                        console.log(`[Spotify] Retrying play (${retryCount}/${maxRetries})...`)
+                        await new Promise(r => setTimeout(r, 600 * retryCount))
+                        if (cancelled) return
                     }
+                }
 
+                if (retryCount > maxRetries) {
+                    setPlayerError('Spotify failed to start. Try clicking Play again.')
+                } else {
                     setPlayReady(true)
                     setIsBuffering(false)
-                    return true
-                } catch (err) {
-                    console.error('[Spotify] Play Attempt Failed:', err)
-                    return false
+                    console.log('[Spotify] Track start sequence complete:', trackId)
                 }
-            }
-
-            // Small initial delay to let the SDK settle
-            await new Promise(r => setTimeout(r, 150))
-
-            while (retryCount <= maxRetries) {
-                const success = await attemptPlay()
-                if (success) break
-                retryCount++
-                if (retryCount <= maxRetries) {
-                    console.log(`[Spotify] Retrying play (${retryCount}/${maxRetries})...`)
-                    await new Promise(r => setTimeout(r, 500 * retryCount))
-                }
-            }
-
-            if (retryCount > maxRetries) {
-                setPlayerError('Spotify failed to start. Try clicking Play again.')
+            } finally {
+                // Always release the transition block, even on error
+                // Wait a bit so any in-flight state events from the play command are skipped too
+                setTimeout(() => {
+                    if (!cancelled) spotifyTransitionActiveRef.current = false
+                }, 1500)
             }
         }
 
-        if (isSpotify && hasMounted) {
-            playSpotifyTrack()
+        playSpotifyTrack()
+
+        return () => {
+            cancelled = true
+            spotifyTransitionActiveRef.current = false
         }
-    }, [isSpotify, currentTrack?.url, hasMounted])
+    }, [isSpotify, currentTrack?.url, hasMounted, spotifyToken])
 
     // Sync Play/Pause with Spotify
+    // IMPORTANT: Only sync after the track is actually loaded (playReady=true).
+    // This prevents premature resume() calls during the track-start sequence,
+    // which would fight against the carefully ordered pause→play sequence.
     useEffect(() => {
-        if (!spotifyPlayerRef.current || !isSpotify) return
+        if (!spotifyPlayerRef.current || !isSpotify || !playReady) return
 
-        // GUARD: If we just changed tracks, let the specialized playSpotifyTrack effect 
-        // handle the initial state. premature sync here causes previous-track audio bleed.
+        // GUARD: Don't sync if the transition block is active
+        if (spotifyTransitionActiveRef.current) return
+
+        // GUARD: Let the specialized playSpotifyTrack effect handle initial state.
         const timeSinceChange = Date.now() - trackChangeTimeRef.current
-        if (timeSinceChange < 1500) return
+        if (timeSinceChange < 2000) return
 
-        if (isPlaying) spotifyPlayerRef.current.resume()
-        else spotifyPlayerRef.current.pause()
-    }, [isPlaying, isSpotify])
+        if (isPlaying) spotifyPlayerRef.current.resume().catch(() => {})
+        else spotifyPlayerRef.current.pause().catch(() => {})
+    }, [isPlaying, isSpotify, playReady])
 
     // Sync Volume with Spotify
     useEffect(() => {

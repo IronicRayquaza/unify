@@ -80,6 +80,8 @@ export function GlobalPlayer() {
     const [scStreamUrl, setScStreamUrl] = useState<string | null>(null)
 
     const localAudioRef = useRef<HTMLAudioElement>(null)
+    const scResumePositionRef = useRef<number>(0)   // saved position before URL re-fetch
+    const scIsRefetchingRef = useRef(false)          // prevents infinite re-fetch loop
     const ytPlayerRef = useRef<any>(null)
     const ytIntervalRef = useRef<any>(null)
     const spotifyPlayerRef = useRef<any>(null)
@@ -826,13 +828,44 @@ export function GlobalPlayer() {
     // Effect to play track when currentTrack changes to Spotify
     useEffect(() => {
         let retryCount = 0
-        const maxRetries = 2
+        const maxRetries = 3
         trackChangeTimeRef.current = Date.now()
+        // CRITICAL: Stamp the next-action time NOW so the Spotify listener's
+        // isTransiting guard correctly suppresses false end-of-track events
+        // that fire right at track load (position=0, paused=true flash).
+        lastNextActionTimeRef.current = Date.now()
 
         const playSpotifyTrack = async () => {
-            if (!isSpotify || !spotifyPlayerRef.current?._deviceId) return
+            if (!isSpotify) return
             const trackId = currentTrack?.url.split('track/')[1]?.split('?')[0]
-            if (!trackId || !spotifyToken) return
+            // Always use the live ref, never the stale closure value
+            const token = spotifyTokenRef.current
+            if (!trackId || !token) {
+                console.warn('[Spotify] Cannot play: missing trackId or token')
+                return
+            }
+
+            // Wait for SDK to connect and get a deviceId (up to 8 seconds)
+            // This is the #1 cause of first-song failure: the SDK is still
+            // connecting when the YT auto-next fires.
+            let deviceId = spotifyPlayerRef.current?._deviceId
+            if (!deviceId) {
+                console.log('[Spotify] Waiting for SDK device connection...')
+                const maxWait = 8000
+                const step = 200
+                let waited = 0
+                while (!deviceId && waited < maxWait) {
+                    await new Promise(r => setTimeout(r, step))
+                    waited += step
+                    deviceId = spotifyPlayerRef.current?._deviceId
+                }
+                if (!deviceId) {
+                    console.error('[Spotify] SDK not connected after 8s. Cannot play.')
+                    setPlayerError('Spotify player not ready. Try clicking Play again.')
+                    return
+                }
+                console.log('[Spotify] SDK connected after', waited, 'ms')
+            }
 
             // CRITICAL: Explicitly pause the local SDK instance before starting a new track
             // This prevents "bleeding" or hearing a second of the previous song.
@@ -840,12 +873,16 @@ export function GlobalPlayer() {
 
             const attemptPlay = async (): Promise<boolean> => {
                 try {
-                    const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${spotifyPlayerRef.current._deviceId}`, {
+                    const freshToken = spotifyTokenRef.current
+                    const freshDeviceId = spotifyPlayerRef.current?._deviceId
+                    if (!freshToken || !freshDeviceId) return false
+
+                    const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${freshDeviceId}`, {
                         method: 'PUT',
                         body: JSON.stringify({ uris: [`spotify:track:${trackId}`] }),
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${spotifyToken}`
+                            'Authorization': `Bearer ${freshToken}`
                         }
                     })
 
@@ -892,6 +929,7 @@ export function GlobalPlayer() {
         }
     }, [isSpotify, currentTrack?.url, hasMounted])
 
+
     // Sync Play/Pause with Spotify
     useEffect(() => {
         if (!spotifyPlayerRef.current || !isSpotify) return
@@ -923,11 +961,13 @@ export function GlobalPlayer() {
         setScStreamUrl(null)
         const trackId = currentTrack.id
 
-        const fetchStream = async () => {
+        const fetchStream = async (resumeFrom = 0) => {
             setPlayReady(false)
             setIsBuffering(true)
-            setProgress(0)
-            setDuration(0)
+            if (resumeFrom === 0) {
+                setProgress(0)
+                setDuration(0)
+            }
 
             try {
                 const res = await fetch(`/api/soundcloud-resolve?url=${encodeURIComponent(currentTrack.url)}`)
@@ -936,6 +976,7 @@ export function GlobalPlayer() {
                 // Only update if we are still on the same track
                 if (currentTrackRef.current?.id === trackId && data.success && data.stream_url) {
                     console.log('[SoundCloud] Backend resolved stream URL')
+                    scResumePositionRef.current = resumeFrom
                     setScStreamUrl(data.stream_url)
                 } else if (data.error) {
                     throw new Error(data.error)
@@ -943,11 +984,15 @@ export function GlobalPlayer() {
             } catch (err) {
                 if (currentTrackRef.current?.id === trackId) {
                     console.error('[SoundCloud] Resolve failed:', err)
-                    setPlayerError('SoundCloud API resolution failed. Please ensure backend is running.')
+                    setPlayerError('SoundCloud stream unavailable. Please try another track.')
                 }
+            } finally {
+                scIsRefetchingRef.current = false
             }
         }
 
+        scResumePositionRef.current = 0
+        scIsRefetchingRef.current = false
         fetchStream()
     }, [isSoundCloud, hasMounted, currentTrack?.url, currentTrack?.id])
 
@@ -963,6 +1008,19 @@ export function GlobalPlayer() {
 
         console.log('[NativeAudio] Loading source:', isLocal ? currentTrack.url : scStreamUrl)
         audio.load()
+
+        // After a SoundCloud URL re-fetch, seek back to where we were
+        if (isSoundCloud && scResumePositionRef.current > 0) {
+            const resumePos = scResumePositionRef.current
+            const onSeekReady = () => {
+                if (audio.seekable.length > 0) {
+                    audio.currentTime = Math.min(resumePos, audio.duration || resumePos)
+                    console.log('[SoundCloud] Resumed from position:', resumePos)
+                }
+                audio.removeEventListener('canplay', onSeekReady)
+            }
+            audio.addEventListener('canplay', onSeekReady)
+        }
 
         if (isPlaying) {
             audio.play().catch(err => {
@@ -1154,10 +1212,45 @@ export function GlobalPlayer() {
                     onPlaying={() => setIsBuffering(false)}
                     onError={(e) => {
                         const err = e.currentTarget.error
+                        const audio = e.currentTarget
                         console.error('[LocalPlayer] Audio Error Object:', err)
                         if (err) {
                             console.error(`[LocalPlayer] Code: ${err.code}, Message: ${err.message}`)
                         }
+
+                        // SoundCloud stream URLs are time-signed and expire (~30 min).
+                        // On error code 4 (MEDIA_ERR_SRC_NOT_SUPPORTED = 403 from expired URL),
+                        // automatically re-fetch a fresh stream URL and resume from same position.
+                        if (isSoundCloud && err && err.code === 4 && !scIsRefetchingRef.current) {
+                            const savedPos = audio.currentTime || 0
+                            console.log('[SoundCloud] Stream URL expired. Re-fetching fresh URL, resume from:', savedPos)
+                            scIsRefetchingRef.current = true
+                            setPlayerError(null)
+                            setIsBuffering(true)
+                            setScStreamUrl(null) // Unmount the audio element
+
+                            // Re-trigger the resolve effect with saved position
+                            if (currentTrackRef.current && currentTrackRef.current.url) {
+                                fetch(`/api/soundcloud-resolve?url=${encodeURIComponent(currentTrackRef.current.url)}`)
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        if (data.success && data.stream_url && currentTrackRef.current?.platform === 'soundcloud') {
+                                            scResumePositionRef.current = savedPos
+                                            setScStreamUrl(data.stream_url)
+                                            console.log('[SoundCloud] Fresh URL obtained, will resume from', savedPos)
+                                        } else {
+                                            setPlayerError('SoundCloud stream expired. Please try again.')
+                                            scIsRefetchingRef.current = false
+                                        }
+                                    })
+                                    .catch(() => {
+                                        setPlayerError('SoundCloud stream expired and could not be refreshed.')
+                                        scIsRefetchingRef.current = false
+                                    })
+                            }
+                            return
+                        }
+
                         setPlayerError('Audio playback failed. Please check the source or your network.')
                     }}
                 />

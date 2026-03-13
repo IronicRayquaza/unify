@@ -124,7 +124,12 @@ export function GlobalPlayer() {
                 script.src = 'https://www.youtube.com/iframe_api'
                 document.body.appendChild(script)
             }
-            window.onYouTubeIframeAPIReady = () => initYTPlayer(videoId)
+            // Read videoId fresh from ref at callback time — avoids stale closure if
+            // initYTPlayer was called multiple times before SDK finished loading
+            window.onYouTubeIframeAPIReady = () => {
+                const freshVideoId = extractVideoId(currentTrackRef.current?.url || '') || videoId
+                initYTPlayer(freshVideoId)
+            }
             return
         }
 
@@ -190,9 +195,6 @@ export function GlobalPlayer() {
                 onReady: (e: any) => {
                     setPlayReady(true)
                     setIsBuffering(false)
-                    if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
-                        e.target.playVideo()
-                    }
                     if (typeof e.target.setVolume === 'function') {
                         e.target.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
                     }
@@ -201,6 +203,28 @@ export function GlobalPlayer() {
                         if (d > 0) setDuration(d)
                     }
                     trackChangeTimeRef.current = Date.now()
+
+                    // Always attempt play on ready — player was created with autoplay intent.
+                    // CRITICAL: Do NOT guard with isPlayingRef — on auto-next transitions the ref
+                    // may not have synced yet when this async browser callback fires.
+                    // Use a persistent retry loop (same as the player-reuse path) to handle background tabs.
+                    if (typeof e.target.playVideo === 'function') {
+                        console.log('[YouTube] onReady: Starting autoplay with retry loop')
+                        e.target.playVideo()
+                        const p = e.target
+                        let attempts = 0
+                        const forcePlay = () => {
+                            const state = p.getPlayerState?.()
+                            // Stop retrying if playing (1), ended (0), or user explicitly paused (isPlayingRef===false)
+                            if (state !== 1 && state !== 0 && attempts < 15 && isPlayingRef.current !== false) {
+                                console.log('[YouTube] New Player Force-Play Attempt:', attempts + 1, '(state:', state, ')')
+                                p.playVideo?.()
+                                attempts++
+                                setTimeout(forcePlay, 500)
+                            }
+                        }
+                        setTimeout(forcePlay, 200)
+                    }
                 },
                 onStateChange: (e: any) => {
                     const state = e.data
@@ -216,8 +240,15 @@ export function GlobalPlayer() {
                     } else if (state === 3) {
                         setIsBuffering(true)
                     } else if (state === 5 || state === -1) {
-                        if (isPlayingRef.current && typeof e.target.playVideo === 'function') {
+                        // Cued or unstarted — try to play, with a retry for background tabs
+                        if (isPlayingRef.current !== false && typeof e.target.playVideo === 'function') {
                             e.target.playVideo()
+                            setTimeout(() => {
+                                if (isPlayingRef.current !== false && e.target.getPlayerState?.() !== 1) {
+                                    console.log('[YouTube] onStateChange retry for cued/unstarted state')
+                                    e.target.playVideo?.()
+                                }
+                            }, 800)
                         }
                     }
                 },

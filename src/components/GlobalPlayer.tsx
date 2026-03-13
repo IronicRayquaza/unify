@@ -238,34 +238,46 @@ export function GlobalPlayer() {
     }, [])
 
     // ─── Background Audio Heartbeat (AudioContext) ───
-    // Maintains "Audible" status for the tab to prevent aggressive CPU/Timer throttling
+    // Maintains "Audible" status for the tab to prevent aggressive CPU/Timer throttling.
+    // IMPORTANT: AudioContext must only be created AFTER a user gesture (browser policy).
+    // We lazy-start it the first time isPlaying becomes true, which is always post-gesture.
     const heartbeatRef = useRef<{ ctx: AudioContext, osc: OscillatorNode } | null>(null)
 
-    useEffect(() => {
-        if (!hasMounted) return
-
-        const startHeartbeat = async () => {
-            if (heartbeatRef.current) return
-            try {
-                const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext
-                const ctx = new AudioContextClass()
-                const osc = ctx.createOscillator()
-                const gain = ctx.createGain()
-
-                osc.type = 'sine'
-                osc.frequency.setValueAtTime(1, ctx.currentTime)
-                gain.gain.setValueAtTime(0.0001, ctx.currentTime) 
-                osc.connect(gain)
-                gain.connect(ctx.destination)
-                if (ctx.state === 'suspended') await ctx.resume()
-                osc.start()
-                heartbeatRef.current = { ctx, osc }
-                console.log('[Heartbeat] Persistent Background Protection Active')
-            } catch (e) { }
+    const startHeartbeat = useCallback(async () => {
+        if (heartbeatRef.current) {
+            // Already running — just unpause if suspended
+            if (heartbeatRef.current.ctx.state === 'suspended') {
+                heartbeatRef.current.ctx.resume().catch(() => {})
+            }
+            return
         }
+        try {
+            const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext
+            if (!AudioContextClass) return
+            const ctx = new AudioContextClass()
+            const osc = ctx.createOscillator()
+            const gain = ctx.createGain()
 
+            osc.type = 'sine'
+            osc.frequency.setValueAtTime(1, ctx.currentTime)
+            gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+            osc.connect(gain)
+            gain.connect(ctx.destination)
+            if (ctx.state === 'suspended') await ctx.resume()
+            osc.start()
+            heartbeatRef.current = { ctx, osc }
+            console.log('[Heartbeat] Persistent Background Protection Active')
+        } catch (e) { }
+    }, [])
+
+    // Lazy-init: start heartbeat the first time the user plays something (always post-gesture)
+    useEffect(() => {
+        if (!hasMounted || !isPlaying) return
         startHeartbeat()
+    }, [hasMounted, isPlaying, startHeartbeat])
 
+    // Cleanup heartbeat on unmount
+    useEffect(() => {
         return () => {
             if (heartbeatRef.current) {
                 const { ctx, osc } = heartbeatRef.current
@@ -274,14 +286,13 @@ export function GlobalPlayer() {
                 heartbeatRef.current = null
             }
         }
-    }, [hasMounted])
+    }, [])
 
-    // Poke heartbeat on track change
+    // Poke heartbeat alive on every track change to prevent suspension
     useEffect(() => {
-        if (heartbeatRef.current?.ctx.state === 'suspended') {
-            heartbeatRef.current.ctx.resume().catch(() => { })
-        }
-    }, [currentTrack?.id])
+        if (!currentTrack?.id) return
+        startHeartbeat()
+    }, [currentTrack?.id, startHeartbeat])
 
     // ─── Page Visibility Recovery ───
     // When the tab comes back into view after being minimized/hidden, immediately
@@ -464,7 +475,7 @@ export function GlobalPlayer() {
 
     // ─── Global Stops & Resets ───
     const stopAllPlayers = useCallback((exclude?: string) => {
-        console.log('[GlobalPlayer] Stop all players triggered, exclude:', exclude)
+        console.log('[GlobalPlayer] Stop all players triggered, exclude:', exclude ?? '(none — full stop)')
 
         // 1. YouTube
         if (exclude !== 'youtube' && exclude !== 'ytmusic') {
@@ -620,6 +631,8 @@ export function GlobalPlayer() {
         if (!ytPlayerRef.current || !isYoutube || !playReady) return
         try {
             const playerState = ytPlayerRef.current.getPlayerState?.()
+            // Guard: if player isn't ready yet, state will be undefined — skip to avoid spurious playVideo() calls
+            if (playerState === undefined || playerState === null) return
             console.log('[YouTube] Sync State:', playerState, 'isPlaying:', isPlaying)
 
             if (isPlaying) {

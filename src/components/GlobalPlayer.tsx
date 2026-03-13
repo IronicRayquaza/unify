@@ -115,17 +115,65 @@ export function GlobalPlayer() {
     useEffect(() => { currentTrackRef.current = currentTrack }, [currentTrack])
     useEffect(() => { isSeekingRef.current = isSeeking }, [isSeeking])
 
+    // ─── Engine Warmup & Script Loading ───
+    useEffect(() => {
+        if (!hasMounted) return
+
+        // 1. YouTube Eager Load
+        if (!document.getElementById('youtube-sdk')) {
+            const script = document.createElement('script')
+            script.id = 'youtube-sdk'
+            script.src = 'https://www.youtube.com/iframe_api'
+            document.body.appendChild(script)
+        }
+
+        // 2. Spotify Eager Load
+        if (spotifyToken && !document.getElementById('spotify-sdk')) {
+            const script = document.createElement('script')
+            script.id = 'spotify-sdk'
+            script.src = 'https://sdk.scdn.co/spotify-player.js'
+            script.async = true
+            document.body.appendChild(script)
+            window.onSpotifyWebPlaybackSDKReady = () => initSpotifyPlayer(spotifyToken)
+        }
+    }, [hasMounted, spotifyToken])
+
+    const isWarmingRef = useRef(false)
+    const hasWarmedRef = useRef(false)
+
+    // Warms up engines on first interaction/play
+    const warmupEngines = useCallback(async () => {
+        if (hasWarmedRef.current || isWarmingRef.current) return
+        isWarmingRef.current = true
+        console.log('[Warmup] Initializing background engines...')
+
+        try {
+            // Wake Up AudioContext
+            if (heartbeatRef.current?.ctx.state === 'suspended') {
+                await heartbeatRef.current.ctx.resume()
+            }
+
+            // Warmup YouTube (Initialize iframe with silent video if not already alive)
+            if (window.YT && window.YT.Player && !ytPlayerRef.current) {
+                // 'u6tREU_c-p4' is a silent placeholder
+                initYTPlayer('u6tREU_c-p4')
+            }
+
+            // Warmup Spotify (Handled by connect in script load)
+            
+            hasWarmedRef.current = true
+        } catch (e) { } finally {
+            isWarmingRef.current = false
+        }
+    }, [])
+
+    useEffect(() => {
+        if (isPlaying && !hasWarmedRef.current) warmupEngines()
+    }, [isPlaying, warmupEngines])
+
     // ─── YouTube Logic ───
     const initYTPlayer = useCallback((videoId: string) => {
         if (!window.YT || !window.YT.Player) {
-            if (!document.getElementById('youtube-sdk')) {
-                const script = document.createElement('script')
-                script.id = 'youtube-sdk'
-                script.src = 'https://www.youtube.com/iframe_api'
-                document.body.appendChild(script)
-            }
-            // Read videoId fresh from ref at callback time — avoids stale closure if
-            // initYTPlayer was called multiple times before SDK finished loading
             window.onYouTubeIframeAPIReady = () => {
                 const freshVideoId = extractVideoId(currentTrackRef.current?.url || '') || videoId
                 initYTPlayer(freshVideoId)
@@ -876,20 +924,12 @@ export function GlobalPlayer() {
     }, [])
 
 
+    // Managed by Eager Load Effect above
     useEffect(() => {
-        if (!hasMounted) return
-        if (spotifyToken) {
-            if (!window.Spotify) {
-                const script = document.createElement('script')
-                script.src = 'https://sdk.scdn.co/spotify-player.js'
-                script.async = true
-                document.body.appendChild(script)
-                window.onSpotifyWebPlaybackSDKReady = () => initSpotifyPlayer(spotifyToken)
-            } else {
-                initSpotifyPlayer(spotifyToken)
-            }
+        if (hasMounted && spotifyToken && window.Spotify && !spotifyPlayerRef.current) {
+            initSpotifyPlayer(spotifyToken)
         }
-    }, [hasMounted, initSpotifyPlayer])
+    }, [hasMounted, spotifyToken, initSpotifyPlayer])
 
     // Effect to play track when currentTrack changes to Spotify
     useEffect(() => {
@@ -900,7 +940,17 @@ export function GlobalPlayer() {
         let cancelled = false
 
         const playSpotifyTrack = async () => {
-            if (!spotifyPlayerRef.current?._deviceId) return
+            // If device isn't ready yet, wait up to 5s (handles first-track transition latency)
+            if (!spotifyPlayerRef.current?._deviceId) {
+                console.log('[Spotify] Device not ready, waiting...')
+                let waitAttempts = 0
+                while (!spotifyPlayerRef.current?._deviceId && waitAttempts < 10) {
+                    await new Promise(r => setTimeout(r, 500))
+                    waitAttempts++
+                }
+                if (!spotifyPlayerRef.current?._deviceId) return
+            }
+
             const trackId = currentTrack?.url.split('track/')[1]?.split('?')[0]
             if (!trackId || !spotifyToken) return
 

@@ -142,63 +142,35 @@ export function GlobalPlayer() {
 
         if (isPlayerHealthy) {
             try {
-                // Extra sanity check: verify the player is not in a permanently broken state.
-                // A player returning state -1 immediately after platform-handoff cleanup may be
-                // stuck with a dead iframe. Check for a valid state (not an exception throw).
-                const currentState = ytPlayerRef.current.getPlayerState?.()
-                const isStateValid = typeof currentState === 'number'
+                console.log('[YouTube] Reusing existing player for:', videoId)
+                setPlayReady(true)
+                setIsBuffering(true)
 
-                if (!isStateValid) {
-                    console.warn('[YouTube] Player exists but state is invalid — recreating...')
-                    ytPlayerRef.current = null
-                } else {
-                    console.log('[YouTube] Reusing existing player for:', videoId, '(current state:', currentState, ')')
-                    setPlayReady(true)
-                    setIsBuffering(true)
+                ytPlayerRef.current.loadVideoById({
+                    videoId: videoId,
+                    startSeconds: 0
+                })
 
-                    ytPlayerRef.current.loadVideoById({
-                        videoId: videoId,
-                        startSeconds: 0
-                    })
+                if (isPlayingRef.current) {
+                    const p = ytPlayerRef.current
+                    if (p.playVideo) p.playVideo()
 
-                    if (isPlayingRef.current) {
-                        const p = ytPlayerRef.current
-
-                        // 1. Fire playVideo() IMMEDIATELY — loadVideoById cues the video
-                        //    (state 5) and we must kick it into play right away.
-                        //    unmuteVideo() is critical: if this player was pre-warmed with
-                        //    mute:1, it will still be muted until we explicitly unmute it.
-                        p.unmuteVideo?.()
-                        p.setVolume?.(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
-                        p.playVideo?.()
-                        console.log('[YouTube] Reuse: immediate playVideo() after loadVideoById')
-
-                        // 2. Recovery loop — only fires for genuinely stuck states.
-                        //    CRITICAL: Skip state 3 (buffering) — the video is loading,
-                        //    calling playVideo() would restart the download from scratch.
-                        let attempts = 0
-                        const forcePlay = () => {
-                            const state = p.getPlayerState?.()
-                            if (state === -1 || state === 5 || state === 2) {
-                                if (attempts < 8 && isPlayingRef.current) {
-                                    console.log('[YouTube] Reuse Force-Play Attempt:', attempts + 1, '(state:', state, ')')
-                                    p.unmuteVideo?.()
-                                    p.playVideo?.()
-                                    attempts++
-                                    setTimeout(forcePlay, 1000)
-                                }
-                            }
-                            // state 1 (playing), 0 (ended), 3 (buffering) → let it proceed
+                    let attempts = 0
+                    const forcePlay = () => {
+                        const state = p.getPlayerState?.()
+                        if (state !== 1 && attempts < 10 && isPlayingRef.current) {
+                            console.log('[YouTube] Background Reuse Play Attempt:', attempts + 1)
+                            p.playVideo?.()
+                            attempts++
+                            setTimeout(forcePlay, 500)
                         }
-                        // Start the recovery loop after a short wait —
-                        // gives the immediate playVideo() time to take effect first
-                        setTimeout(forcePlay, 600)
                     }
-
-                    ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
-                    trackChangeTimeRef.current = Date.now()
-                    return
+                    setTimeout(forcePlay, 50)
                 }
+
+                ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                trackChangeTimeRef.current = Date.now()
+                return
             } catch (e) {
                 console.warn('[YouTube] Reuse failed, recreating player:', e)
                 ytPlayerRef.current = null
@@ -232,66 +204,39 @@ export function GlobalPlayer() {
                     }
                     trackChangeTimeRef.current = Date.now()
 
-                    // New player: always try to autoplay. Use a retry loop ONLY for
-                    // states where the player is genuinely stuck (not for buffering).
+                    // Always attempt play on ready — player was created with autoplay intent.
+                    // CRITICAL: Do NOT guard with isPlayingRef — on auto-next transitions the ref
+                    // may not have synced yet when this async browser callback fires.
+                    // Use a persistent retry loop (same as the player-reuse path) to handle background tabs.
                     if (typeof e.target.playVideo === 'function') {
-                        console.log('[YouTube] onReady: Starting autoplay')
+                        console.log('[YouTube] onReady: Starting autoplay with retry loop')
                         e.target.playVideo()
                         const p = e.target
                         let attempts = 0
                         const forcePlay = () => {
                             const state = p.getPlayerState?.()
-                            // CRITICAL: Skip buffering (state 3) — the video is loading, don't interrupt it.
-                            // Only retry for unstarted (-1), cued (5), or paused (2) — genuine stuck states.
-                            if (state === -1 || state === 5 || state === 2) {
-                                if (attempts < 12 && isPlayingRef.current !== false) {
-                                    console.log('[YouTube] New Player Force-Play Attempt:', attempts + 1, '(state:', state, ')')
-                                    p.playVideo?.()
-                                    attempts++
-                                    setTimeout(forcePlay, 800)
-                                }
-                            } else if (state !== 1 && state !== 0 && state !== 3) {
-                                // Unknown non-playing state — try once more
-                                if (attempts < 3 && isPlayingRef.current !== false) {
-                                    p.playVideo?.()
-                                    attempts++
-                                    setTimeout(forcePlay, 1000)
-                                }
+                            // Stop retrying if playing (1), ended (0), or user explicitly paused (isPlayingRef===false)
+                            if (state !== 1 && state !== 0 && attempts < 15 && isPlayingRef.current !== false) {
+                                console.log('[YouTube] New Player Force-Play Attempt:', attempts + 1, '(state:', state, ')')
+                                p.playVideo?.()
+                                attempts++
+                                setTimeout(forcePlay, 500)
                             }
-                            // state 1 (playing), 0 (ended), 3 (buffering) → let it proceed naturally
                         }
-                        setTimeout(forcePlay, 400)
+                        setTimeout(forcePlay, 200)
                     }
                 },
                 onStateChange: (e: any) => {
                     const state = e.data
-                    const timeSinceChange = Date.now() - trackChangeTimeRef.current
-
                     if (state === 0) {
-                        // Ended — only advance if this is not a stale event from a
-                        // player that was stopped during platform handoff (< 2s guard)
-                        if (timeSinceChange > 2000) {
-                            console.log('[YouTube] Video Finished, calling next')
-                            nextRef.current(true)
-                        }
+                        console.log('[YouTube] Video Finished, calling next')
+                        nextRef.current(true)
                     } else if (state === 1) {
-                        // Playing — only sync UI if track is settled (not mid-transition)
-                        if (timeSinceChange > 500) {
-                            setIsBuffering(false)
-                            setPlayerError(null)
-                            if (!isPlayingRef.current) resumeRef.current()
-                        } else {
-                            setIsBuffering(false)
-                        }
+                        setIsBuffering(false)
+                        setPlayerError(null)
+                        if (!isPlayingRef.current) resumeRef.current()
                     } else if (state === 2) {
-                        // Paused — only reflect this as a user action if we're settled.
-                        // During stopAllPlayers() on platform handoff, pauseVideo() fires
-                        // this event. We MUST NOT call pauseRef() in that case as it would
-                        // corrupt the isPlaying state for the incoming new track.
-                        if (timeSinceChange > 2000 && isPlayingRef.current) {
-                            console.log('[YouTube] External pause detected, syncing UI')
-                            pauseRef.current()
-                        }
+                        if (!isPlayingRef.current) pauseRef.current()
                     } else if (state === 3) {
                         setIsBuffering(true)
                     } else if (state === 5 || state === -1) {
@@ -722,71 +667,6 @@ export function GlobalPlayer() {
         return () => clearInterval(interval)
     }, [isYoutube, isPlaying, hasMounted, currentTrack?.url, playReady])
 
-    // ─── YouTube Player Pre-Warm ───
-    // Load the YT SDK and silently create a dormant player as early as possible.
-    // This ensures the very first YouTube transition uses the fast "reuse" path
-    // (loadVideoById) instead of cold-creating a new player, eliminating the
-    // 3–6s silence gap when switching from Spotify/SoundCloud → YouTube.
-    useEffect(() => {
-        if (!hasMounted) return
-
-        const prewarm = () => {
-            // If a real player already exists (e.g. YouTube was the first song), skip.
-            if (ytPlayerRef.current) return
-            // If yt-player div not in DOM yet, skip (will be created on first render).
-            if (!document.getElementById('yt-player')) return
-
-            console.log('[YouTube] Pre-warming player...')
-            ytPlayerRef.current = new window.YT.Player('yt-player', {
-                // Use a short, royalty-free YouTube video as the placeholder.
-                // autoplay=0 => silent, no audio output at all.
-                videoId: 'dQw4w9WgXcQ', // placeholder — will be replaced by loadVideoById
-                playerVars: {
-                    autoplay: 0,        // silent — do NOT start playing
-                    controls: 0,
-                    mute: 1,            // belt-and-suspenders silence
-                    playsinline: 1,
-                    rel: 0,
-                    modestbranding: 1,
-                    origin: window.location.origin
-                },
-                events: {
-                    onReady: () => {
-                        console.log('[YouTube] Pre-warm complete. Player is ready for instant reuse.')
-                        // Immediately pause to ensure nothing plays
-                        try { ytPlayerRef.current?.pauseVideo?.() } catch (e) { }
-                    },
-                    onStateChange: (e: any) => {
-                        // During pre-warm, aggressively silence any accidental playback
-                        if (e.data === 1 && !isPlayingRef.current) {
-                            try { ytPlayerRef.current?.pauseVideo?.() } catch (err) { }
-                        }
-                    }
-                }
-            })
-        }
-
-        // Load the SDK if not already present, then prewarm
-        if (window.YT?.Player) {
-            prewarm()
-        } else {
-            if (!document.getElementById('youtube-sdk')) {
-                const script = document.createElement('script')
-                script.id = 'youtube-sdk'
-                script.src = 'https://www.youtube.com/iframe_api'
-                document.body.appendChild(script)
-            }
-            // Wrap existing callback: chain our prewarm after any pending initYTPlayer callback
-            const existingCallback = window.onYouTubeIframeAPIReady
-            window.onYouTubeIframeAPIReady = () => {
-                existingCallback?.()
-                // Only prewarm if initYTPlayer didn't already create a real player
-                setTimeout(prewarm, 100)
-            }
-        }
-    }, [hasMounted]) // Run once on mount
-
-    // Trigger initYTPlayer when a real YouTube track is selected
     useEffect(() => {
         if (isYoutube && hasMounted) {
             const videoId = extractVideoId(currentTrack?.url || '')
@@ -798,30 +678,16 @@ export function GlobalPlayer() {
         if (!ytPlayerRef.current || !isYoutube || !playReady) return
         try {
             const playerState = ytPlayerRef.current.getPlayerState?.()
+            // Guard: if player isn't ready yet, state will be undefined — skip to avoid spurious playVideo() calls
             if (playerState === undefined || playerState === null) return
+            console.log('[YouTube] Sync State:', playerState, 'isPlaying:', isPlaying)
 
-            // Use both the React closure value AND the live ref.
-            // The ref is always current; the closure can be momentarily stale
-            // during transitions (e.g. a render where isPlaying=false fired just
-            // before performNext() set it back to true).
-            // We only act on "pause intent" if BOTH agree we should be paused.
-            const shouldBePlaying = isPlaying || isPlayingRef.current
-            console.log('[YouTube] Sync State:', playerState, 'isPlaying:', isPlaying, 'ref:', isPlayingRef.current)
-
-            // Guard: don't touch the player within 2s of a track change —
-            // the reuse path already calls playVideo() directly, and this effect
-            // firing early with a stale snapshot would fight against it.
-            const timeSinceChange = Date.now() - trackChangeTimeRef.current
-            if (timeSinceChange < 2000) {
-                console.log('[YouTube] Sync State: skipping — within transition window')
-                return
-            }
-
-            if (shouldBePlaying) {
-                // Only force-play if genuinely stuck — not buffering (3) or playing (1)
+            if (isPlaying) {
+                // If the player is cued, unstarted, or paused, force play
                 if (playerState !== 1 && playerState !== 3) {
                     if (typeof ytPlayerRef.current.playVideo === 'function') {
                         ytPlayerRef.current.playVideo()
+                        // Secondary attempt after a short delay for background tabs
                         setTimeout(() => {
                             if (isPlayingRef.current && ytPlayerRef.current?.getPlayerState?.() !== 1) {
                                 ytPlayerRef.current?.playVideo?.()
@@ -830,9 +696,7 @@ export function GlobalPlayer() {
                     }
                 }
             } else {
-                // Only pause if BOTH the closure AND the ref agree we should be paused.
-                // If they disagree (ref says play, closure says pause), the closure is stale — skip.
-                if (!isPlayingRef.current && (playerState === 1 || playerState === 3)) {
+                if (playerState === 1 || playerState === 3) {
                     if (typeof ytPlayerRef.current.pauseVideo === 'function') {
                         ytPlayerRef.current.pauseVideo()
                     }
@@ -1105,12 +969,11 @@ export function GlobalPlayer() {
                     console.log('[Spotify] Track start sequence complete:', trackId)
                 }
             } finally {
-                // Release the transition block shortly after the play command succeeds.
-                // 800ms is enough time for any in-flight state events from the pause()/play
-                // sequence to arrive and be discarded, without blocking subsequent events.
+                // Always release the transition block, even on error
+                // Wait a bit so any in-flight state events from the play command are skipped too
                 setTimeout(() => {
                     if (!cancelled) spotifyTransitionActiveRef.current = false
-                }, 800)
+                }, 1500)
             }
         }
 

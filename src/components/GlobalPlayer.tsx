@@ -343,7 +343,14 @@ export function GlobalPlayer() {
             // Spotify: check if track ended while hidden
             if (isSP && spotifyPlayerRef.current) {
                 spotifyPlayerRef.current.getCurrentState().then((s: any) => {
-                    if (s && s.paused && s.position === 0 && s.repeat_mode === 0) {
+                    if (!s) {
+                        // null state = Spotify has nothing playing.
+                        // If our app thinks we're still playing, the track ended while backgrounded.
+                        if (isPlayingRef.current) {
+                            console.log('[Visibility] Spotify state is null while playing — track ended in background. Advancing...')
+                            nextRef.current(true)
+                        }
+                    } else if (s.paused && s.position === 0 && s.repeat_mode === 0) {
                         console.log('[Visibility] Spotify ended while hidden. Advancing...')
                         nextRef.current(true)
                     }
@@ -435,7 +442,16 @@ export function GlobalPlayer() {
             // 3. Spotify Watchdog
             if (isSP && spotifyPlayerRef.current) {
                 spotifyPlayerRef.current.getCurrentState().then((s: any) => {
-                    if (s) {
+                    if (!s) {
+                        // null state means Spotify has no active playback.
+                        // If app thinks we're playing and the track has been running for
+                        // at least 5s (ruling out startup race), the track ended in the background.
+                        const timeSinceChange = Date.now() - trackChangeTimeRef.current
+                        if (isPlayingRef.current && timeSinceChange > 5000) {
+                            console.log('[Spotify] Watchdog: null state while playing — track ended in background. Advancing...')
+                            nextRef.current(true)
+                        }
+                    } else {
                         const isFinished = s.paused && s.position === 0 && s.repeat_mode === 0
                         const isStalled = s.paused && !isFinished && Date.now() - trackChangeTimeRef.current > 3000
 

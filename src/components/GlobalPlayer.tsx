@@ -798,16 +798,30 @@ export function GlobalPlayer() {
         if (!ytPlayerRef.current || !isYoutube || !playReady) return
         try {
             const playerState = ytPlayerRef.current.getPlayerState?.()
-            // Guard: if player isn't ready yet, state will be undefined — skip to avoid spurious playVideo() calls
             if (playerState === undefined || playerState === null) return
-            console.log('[YouTube] Sync State:', playerState, 'isPlaying:', isPlaying)
 
-            if (isPlaying) {
-                // If the player is cued, unstarted, or paused, force play
+            // Use both the React closure value AND the live ref.
+            // The ref is always current; the closure can be momentarily stale
+            // during transitions (e.g. a render where isPlaying=false fired just
+            // before performNext() set it back to true).
+            // We only act on "pause intent" if BOTH agree we should be paused.
+            const shouldBePlaying = isPlaying || isPlayingRef.current
+            console.log('[YouTube] Sync State:', playerState, 'isPlaying:', isPlaying, 'ref:', isPlayingRef.current)
+
+            // Guard: don't touch the player within 2s of a track change —
+            // the reuse path already calls playVideo() directly, and this effect
+            // firing early with a stale snapshot would fight against it.
+            const timeSinceChange = Date.now() - trackChangeTimeRef.current
+            if (timeSinceChange < 2000) {
+                console.log('[YouTube] Sync State: skipping — within transition window')
+                return
+            }
+
+            if (shouldBePlaying) {
+                // Only force-play if genuinely stuck — not buffering (3) or playing (1)
                 if (playerState !== 1 && playerState !== 3) {
                     if (typeof ytPlayerRef.current.playVideo === 'function') {
                         ytPlayerRef.current.playVideo()
-                        // Secondary attempt after a short delay for background tabs
                         setTimeout(() => {
                             if (isPlayingRef.current && ytPlayerRef.current?.getPlayerState?.() !== 1) {
                                 ytPlayerRef.current?.playVideo?.()
@@ -816,7 +830,9 @@ export function GlobalPlayer() {
                     }
                 }
             } else {
-                if (playerState === 1 || playerState === 3) {
+                // Only pause if BOTH the closure AND the ref agree we should be paused.
+                // If they disagree (ref says play, closure says pause), the closure is stale — skip.
+                if (!isPlayingRef.current && (playerState === 1 || playerState === 3)) {
                     if (typeof ytPlayerRef.current.pauseVideo === 'function') {
                         ytPlayerRef.current.pauseVideo()
                     }

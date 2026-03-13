@@ -164,30 +164,35 @@ export function GlobalPlayer() {
                     if (isPlayingRef.current) {
                         const p = ytPlayerRef.current
 
+                        // 1. Fire playVideo() IMMEDIATELY — loadVideoById cues the video
+                        //    (state 5) and we must kick it into play right away.
+                        //    unmuteVideo() is critical: if this player was pre-warmed with
+                        //    mute:1, it will still be muted until we explicitly unmute it.
+                        p.unmuteVideo?.()
+                        p.setVolume?.(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                        p.playVideo?.()
+                        console.log('[YouTube] Reuse: immediate playVideo() after loadVideoById')
+
+                        // 2. Recovery loop — only fires for genuinely stuck states.
+                        //    CRITICAL: Skip state 3 (buffering) — the video is loading,
+                        //    calling playVideo() would restart the download from scratch.
                         let attempts = 0
                         const forcePlay = () => {
                             const state = p.getPlayerState?.()
-                            // CRITICAL: Do NOT call playVideo() when state is 3 (BUFFERING).
-                            // Doing so restarts the buffer from scratch, causing an infinite loop.
-                            // Only intervene when stuck in unstarted(-1), cued(5), or paused(2).
                             if (state === -1 || state === 5 || state === 2) {
-                                if (attempts < 10 && isPlayingRef.current) {
+                                if (attempts < 8 && isPlayingRef.current) {
                                     console.log('[YouTube] Reuse Force-Play Attempt:', attempts + 1, '(state:', state, ')')
-                                    p.playVideo?.()
-                                    attempts++
-                                    setTimeout(forcePlay, 800)
-                                }
-                            } else if (state !== 1 && state !== 0 && state !== 3) {
-                                // Unknown non-playing state — single attempt
-                                if (attempts < 3 && isPlayingRef.current) {
+                                    p.unmuteVideo?.()
                                     p.playVideo?.()
                                     attempts++
                                     setTimeout(forcePlay, 1000)
                                 }
                             }
-                            // state 1 (playing) or 0 (ended) or 3 (buffering) → do nothing, let it proceed
+                            // state 1 (playing), 0 (ended), 3 (buffering) → let it proceed
                         }
-                        setTimeout(forcePlay, 300)
+                        // Start the recovery loop after a short wait —
+                        // gives the immediate playVideo() time to take effect first
+                        setTimeout(forcePlay, 600)
                     }
 
                     ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))

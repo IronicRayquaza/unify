@@ -22,18 +22,6 @@ function formatTime(seconds: number) {
     return `${min}:${sec < 10 ? '0' : ''}${sec}`
 }
 
-function getYouTubeErrorMessage(code: any): string {
-    const c = (code !== undefined && code !== null) ? Number(code) : NaN
-    if (isNaN(c)) return 'YouTube playback error. Try refreshing.'
-    switch (c) {
-        case 2: return 'Invalid link or video ID.'
-        case 5: return 'HTML5 Player error.'
-        case 100: return 'Track removed or private.'
-        case 101:
-        case 150: return 'Label restricted embedding. Try the search again or open on YouTube.'
-        default: return `YouTube error code ${c}.`
-    }
-}
 
 declare global {
     interface Window {
@@ -67,24 +55,24 @@ export function GlobalPlayer() {
         return p1 === p2
     }
 
-    const isEmbedPlatform = isYoutube // Only YouTube needs the mini-player container now
+    const isEmbedPlatform = isYoutube || isApple
 
     const [progress, setProgress] = useState(0)
     const [duration, setDuration] = useState(0)
     const [isBuffering, setIsBuffering] = useState(false)
     const [playerError, setPlayerError] = useState<string | null>(null)
     const [playReady, setPlayReady] = useState(false)
-    const [showVideo, setShowVideo] = useState(true)
+    const [showVideo, setShowVideo] = useState(false)
     const [hasMounted, setHasMounted] = useState(false)
     const [isSeeking, setIsSeeking] = useState(false)
-    const [scStreamUrl, setScStreamUrl] = useState<string | null>(null)
+    const [nativeStreamUrl, setNativeStreamUrl] = useState<string | null>(null)
 
     const localAudioRef = useRef<HTMLAudioElement>(null)
     const ytPlayerRef = useRef<any>(null)
     const ytIntervalRef = useRef<any>(null)
     const spotifyPlayerRef = useRef<any>(null)
-    const ytContainerRef = useRef<HTMLDivElement>(null)
     const spotifyIntervalRef = useRef<any>(null)
+    const pendingYtVideoIdRef = useRef<string | null>(null)
 
     const { activePlaylist, addTrack: addTrackToPlaylist, refreshPlaylists } = usePlaylists()
     const [isCapturing, setIsCapturing] = useState(false)
@@ -101,11 +89,18 @@ export function GlobalPlayer() {
     const trackChangeTimeRef = useRef<number>(0)
     const lastSpotifyIdRef = useRef<string | null>(null)
     const lastNextActionTimeRef = useRef<number>(0)
-    // Blocks player_state_changed from reacting during Spotify track-start sequence
+    const lastPlayPauseActionRef = useRef<number>(0) // Cooldown for sync events
     const spotifyTransitionActiveRef = useRef(false)
     const spotifyTokenRef = useRef(spotifyToken)
+    const hasMountedRef = useRef(false)
+    const spotifyActivationDoneRef = useRef(false)
+    const waitingForFocusRef = useRef(false)
 
-    useEffect(() => { setHasMounted(true) }, [])
+    useEffect(() => {
+        // RESET BACKEND SESSION: Ensure "One-Time Ghost Hand" is available on refresh
+        fetch('/api/reset-cold-start').catch(() => { })
+        setHasMounted(true)
+    }, [])
     useEffect(() => { isPlayingRef.current = isPlaying }, [isPlaying])
     useEffect(() => { volumeRef.current = volume }, [volume])
     useEffect(() => { isMutedRef.current = isMuted }, [isMuted])
@@ -114,159 +109,73 @@ export function GlobalPlayer() {
     useEffect(() => { pauseRef.current = pause }, [pause])
     useEffect(() => { currentTrackRef.current = currentTrack }, [currentTrack])
     useEffect(() => { isSeekingRef.current = isSeeking }, [isSeeking])
+    useEffect(() => { hasMountedRef.current = hasMounted }, [hasMounted])
 
-    // ─── YouTube Logic ───
-    const initYTPlayer = useCallback((videoId: string) => {
-        if (!window.YT || !window.YT.Player) {
-            if (!document.getElementById('youtube-sdk')) {
-                const script = document.createElement('script')
-                script.id = 'youtube-sdk'
-                script.src = 'https://www.youtube.com/iframe_api'
-                document.body.appendChild(script)
-            }
-            // Read videoId fresh from ref at callback time — avoids stale closure if
-            // initYTPlayer was called multiple times before SDK finished loading
-            window.onYouTubeIframeAPIReady = () => {
-                const freshVideoId = extractVideoId(currentTrackRef.current?.url || '') || videoId
-                initYTPlayer(freshVideoId)
-            }
-            return
-        }
 
-        // Detect if player is alive and functional
-        const isPlayerHealthy = ytPlayerRef.current &&
-            typeof ytPlayerRef.current.loadVideoById === 'function' &&
-            typeof ytPlayerRef.current.getPlayerState === 'function' &&
-            typeof ytPlayerRef.current.playVideo === 'function' &&
-            typeof ytPlayerRef.current.setVolume === 'function'
-
-        if (isPlayerHealthy) {
+    // ─── Wake Lock (Screen stay-awake) ───
+    const wakeLockRef = useRef<any>(null)
+    useEffect(() => {
+        if (!('wakeLock' in navigator) || !hasMounted) return
+        const requestWakeLock = async () => {
             try {
-                console.log('[YouTube] Reusing existing player for:', videoId)
-                setPlayReady(true)
-                setIsBuffering(true)
-
-                ytPlayerRef.current.loadVideoById({
-                    videoId: videoId,
-                    startSeconds: 0
-                })
-
-                if (isPlayingRef.current) {
-                    const p = ytPlayerRef.current
-                    if (p.playVideo) p.playVideo()
-
-                    let attempts = 0
-                    const forcePlay = () => {
-                        const state = p.getPlayerState?.()
-                        if (state !== 1 && attempts < 10 && isPlayingRef.current) {
-                            console.log('[YouTube] Background Reuse Play Attempt:', attempts + 1)
-                            p.playVideo?.()
-                            attempts++
-                            setTimeout(forcePlay, 500)
-                        }
-                    }
-                    setTimeout(forcePlay, 50)
+                if (isPlaying && !wakeLockRef.current) {
+                    wakeLockRef.current = await (navigator as any).wakeLock.request('screen')
+                    console.log('[WakeLock] Active')
+                } else if (!isPlaying && wakeLockRef.current) {
+                    await wakeLockRef.current.release()
+                    wakeLockRef.current = null
                 }
-
-                ytPlayerRef.current.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
-                trackChangeTimeRef.current = Date.now()
-                return
-            } catch (e) {
-                console.warn('[YouTube] Reuse failed, recreating player:', e)
-                ytPlayerRef.current = null
-            }
+            } catch (err) { console.warn('[WakeLock] Failed:', err) }
         }
+        requestWakeLock()
+        return () => { if (wakeLockRef.current) wakeLockRef.current.release().catch(() => { }) }
+    }, [isPlaying, hasMounted])
 
-        if (!document.getElementById('yt-player')) {
-            console.error('[YouTube] Player target element not found')
-            return
-        }
-
-        ytPlayerRef.current = new window.YT.Player('yt-player', {
-            videoId: videoId,
-            playerVars: {
-                autoplay: 1,
-                controls: 1,
-                modestbranding: 1,
-                rel: 0,
-                origin: window.location.origin
-            },
-            events: {
-                onReady: (e: any) => {
-                    setPlayReady(true)
-                    setIsBuffering(false)
-                    if (typeof e.target.setVolume === 'function') {
-                        e.target.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
-                    }
-                    if (typeof e.target.getDuration === 'function') {
-                        const d = e.target.getDuration()
-                        if (d > 0) setDuration(d)
-                    }
-                    trackChangeTimeRef.current = Date.now()
-
-                    // Always attempt play on ready — player was created with autoplay intent.
-                    // CRITICAL: Do NOT guard with isPlayingRef — on auto-next transitions the ref
-                    // may not have synced yet when this async browser callback fires.
-                    // Use a persistent retry loop (same as the player-reuse path) to handle background tabs.
-                    if (typeof e.target.playVideo === 'function') {
-                        console.log('[YouTube] onReady: Starting autoplay with retry loop')
-                        e.target.playVideo()
-                        const p = e.target
-                        let attempts = 0
-                        const forcePlay = () => {
-                            const state = p.getPlayerState?.()
-                            // Stop retrying if playing (1), ended (0), or user explicitly paused (isPlayingRef===false)
-                            if (state !== 1 && state !== 0 && attempts < 15 && isPlayingRef.current !== false) {
-                                console.log('[YouTube] New Player Force-Play Attempt:', attempts + 1, '(state:', state, ')')
-                                p.playVideo?.()
-                                attempts++
-                                setTimeout(forcePlay, 500)
-                            }
-                        }
-                        setTimeout(forcePlay, 200)
-                    }
-                },
-                onStateChange: (e: any) => {
-                    const state = e.data
-                    if (state === 0) {
-                        console.log('[YouTube] Video Finished, calling next')
-                        nextRef.current(true)
-                    } else if (state === 1) {
-                        setIsBuffering(false)
-                        setPlayerError(null)
-                        if (!isPlayingRef.current) resumeRef.current()
-                    } else if (state === 2) {
-                        if (!isPlayingRef.current) pauseRef.current()
-                    } else if (state === 3) {
-                        setIsBuffering(true)
-                    } else if (state === 5 || state === -1) {
-                        // Cued or unstarted — try to play, with a retry for background tabs
-                        if (isPlayingRef.current !== false && typeof e.target.playVideo === 'function') {
-                            e.target.playVideo()
-                            setTimeout(() => {
-                                if (isPlayingRef.current !== false && e.target.getPlayerState?.() !== 1) {
-                                    console.log('[YouTube] onStateChange retry for cued/unstarted state')
-                                    e.target.playVideo?.()
-                                }
-                            }, 800)
-                        }
-                    }
-                },
-                onError: (e: any) => {
-                    const msg = getYouTubeErrorMessage(e.data)
-                    setPlayerError(msg)
-                    setIsBuffering(false)
-                    if (e.data === 150 || e.data === 101 || e.data === 100) {
-                        setTimeout(() => {
-                            if (currentTrackRef.current && (currentTrackRef.current.platform === 'youtube' || currentTrackRef.current.platform === 'ytmusic')) {
-                                nextRef.current(true)
-                            }
-                        }, 3000)
-                    }
+    // ─── Browser Policy & Background Heartbeat: Unlock on first interaction ───
+    const audioCtxRef = useRef<AudioContext | null>(null)
+    const spotifyGhostHandDoneRef = useRef(false)
+    const spotifyGhostHandActiveRef = useRef(false)
+    const spotifyMuteLockedRef = useRef(false) // Hard mute until new track bitstream confirmed
+    const spotifyKickHandledForTrackRef = useRef<string | null>(null)
+    useEffect(() => {
+        if (!hasMounted) return
+        const unlockEvents = ['click', 'keydown', 'pointerdown', 'scroll']
+        const onFirstInteraction = async () => {
+            if (spotifyActivationDoneRef.current) return
+            
+            // 1. Initialize Heartbeat on gesture (to satisfy browser)
+            try {
+                if (!audioCtxRef.current) {
+                    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+                    audioCtxRef.current = new AudioContextClass()
+                    const osc = audioCtxRef.current.createOscillator()
+                    const gain = audioCtxRef.current.createGain()
+                    osc.connect(gain)
+                    gain.connect(audioCtxRef.current.destination)
+                    gain.gain.setValueAtTime(0.0001, audioCtxRef.current.currentTime)
+                    osc.start()
+                    console.log('[Heartbeat] Persistent Background Bridge Activated via Gesture')
                 }
+            } catch (e) { }
+
+            // 2. Unlock Spotify SDK
+            if (spotifyPlayerRef.current) {
+                try {
+                    await spotifyPlayerRef.current.activateElement()
+                    spotifyActivationDoneRef.current = true
+                    console.log('[Spotify] Real SDK Audio Bridge Unlocked')
+                } catch (e) { }
             }
-        })
-    }, [])
+            unlockEvents.forEach(e => document.removeEventListener(e, onFirstInteraction))
+        }
+        unlockEvents.forEach(e => document.addEventListener(e, onFirstInteraction))
+        return () => {
+            unlockEvents.forEach(e => document.removeEventListener(e, onFirstInteraction))
+            audioCtxRef.current?.close()
+        }
+    }, [hasMounted])
+
+
 
     // ─── Background Audio Heartbeat (AudioContext) ───
     // Maintains "Audible" status for the tab to prevent aggressive CPU/Timer throttling.
@@ -278,7 +187,7 @@ export function GlobalPlayer() {
         if (heartbeatRef.current) {
             // Already running — just unpause if suspended
             if (heartbeatRef.current.ctx.state === 'suspended') {
-                heartbeatRef.current.ctx.resume().catch(() => {})
+                heartbeatRef.current.ctx.resume().catch(() => { })
             }
             return
         }
@@ -290,8 +199,11 @@ export function GlobalPlayer() {
             const gain = ctx.createGain()
 
             osc.type = 'sine'
-            osc.frequency.setValueAtTime(1, ctx.currentTime)
-            gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+            osc.frequency.setValueAtTime(24000, ctx.currentTime) // Supersonic (inaudible), max safe range
+            // Transition Boost: Browsers treat "audible" tabs with higher priority.
+            // When hidden, we use a slightly higher (but still negligible) gain to ensure hardware stays active.
+            const targetGain = document.hidden ? 0.000001 : 0.0000001
+            gain.gain.setValueAtTime(targetGain, ctx.currentTime)
             osc.connect(gain)
             gain.connect(ctx.destination)
             if (ctx.state === 'suspended') await ctx.resume()
@@ -319,47 +231,128 @@ export function GlobalPlayer() {
         }
     }, [])
 
+    // ─── YouTube Logic ───
+    const initYTPlayer = useCallback((videoId: string) => {
+        if (!window.YT || !window.YT.Player) {
+            if (!document.getElementById('youtube-sdk')) {
+                const script = document.createElement('script')
+                script.id = 'youtube-sdk'
+                script.src = 'https://www.youtube.com/iframe_api'
+                document.body.appendChild(script)
+            }
+            window.onYouTubeIframeAPIReady = () => {
+                const freshVideoId = pendingYtVideoIdRef.current ||
+                    extractVideoId(currentTrackRef.current?.url || '') || videoId
+                pendingYtVideoIdRef.current = null
+                initYTPlayer(freshVideoId)
+            }
+            return
+        }
+
+        // Detect if player is alive and functional
+        const isPlayerHealthy = ytPlayerRef.current &&
+            typeof ytPlayerRef.current.loadVideoById === 'function' &&
+            typeof ytPlayerRef.current.getPlayerState === 'function' &&
+            typeof ytPlayerRef.current.playVideo === 'function'
+
+        pendingYtVideoIdRef.current = videoId
+
+        if (isPlayerHealthy) {
+            try {
+                const currentTime = Math.floor(localAudioRef.current?.currentTime || 0)
+                console.log('[YouTube] Handoff sync. Seeking to:', currentTime)
+                ytPlayerRef.current.loadVideoById({ 
+                    videoId, 
+                    startSeconds: currentTime 
+                })
+                // Internal seek is often needed as loadVideoById is not always frame-perfect
+                ytPlayerRef.current.seekTo(currentTime, true)
+                if (isPlayingRef.current) ytPlayerRef.current.playVideo?.()
+                return
+            } catch (e) {
+                ytPlayerRef.current = null
+            }
+        }
+
+        if (!document.getElementById('yt-player')) return
+
+        ytPlayerRef.current = new window.YT.Player('yt-player', {
+            videoId: videoId,
+            playerVars: {
+                autoplay: 1,
+                controls: 1,
+                modestbranding: 1,
+                rel: 0,
+                enablejsapi: 1,
+                origin: window.location.origin
+            },
+            events: {
+                onReady: (e: any) => {
+                    const currentTime = Math.floor(localAudioRef.current?.currentTime || 0)
+                    console.log('[YouTube] Pop-up ready. Precision-seeking to:', currentTime)
+                    e.target.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
+                    e.target.seekTo(currentTime, true)
+                    if (isPlayingRef.current) e.target.playVideo()
+                },
+                onStateChange: (e: any) => {
+                    if (e.data === 0) nextRef.current(true)
+                }
+            }
+        })
+    }, [])
+
     // Poke heartbeat alive on every track change to prevent suspension
     useEffect(() => {
         if (!currentTrack?.id) return
         startHeartbeat()
     }, [currentTrack?.id, startHeartbeat])
 
-    // ─── Page Visibility Recovery ───
-    // When the tab comes back into view after being minimized/hidden, immediately
-    // run a catch-up check. This handles cases where onended fired while the tab
-    // was throttled and the event was silently dropped by the browser.
+    // ─── Page Visibility Recovery & Browser Policy ───
     useEffect(() => {
         if (!hasMounted) return
 
-        const handleVisibilityChange = () => {
+        const handleVisibilityChange = async () => {
             if (document.visibilityState !== 'visible') return
-            if (!isPlayingRef.current || !currentTrackRef.current) return
+            
+            // 1. Guard against cold-start deferral conflicts
+            if (waitingForFocusRef.current) {
+                console.log('[Visibility] Tab focused. Letting startup deferral handle it.')
+                return
+            }
 
-            const platform = currentTrackRef.current.platform
-            const isYT = platform === 'youtube' || platform === 'ytmusic'
-            const isLC = platform === 'local'
-            const isSC = platform === 'soundcloud'
+            const track = currentTrackRef.current
+            if (!isPlayingRef.current || !track) return
+
+            const platform = track.platform
             const isSP = platform === 'spotify'
 
             console.log('[Visibility] Tab became visible. Running recovery check...')
 
-            // YouTube: check if video ended but state event was missed
-            if (isYT && ytPlayerRef.current) {
+            // 2. Spotify: check if track ended or stalled while hidden
+            // 2. Spotify: check if track ended or stalled while hidden
+            if (isSP && spotifyPlayerRef.current) {
                 try {
-                    const state = ytPlayerRef.current.getPlayerState?.()
-                    if (state === 0) {
-                        // YT.PlayerState.ENDED
-                        console.log('[Visibility] YouTube ended while hidden. Advancing...')
-                        nextRef.current(true)
-                    } else if (state !== 1 && state !== 3) {
-                        // Not playing or buffering - try to recover
-                        ytPlayerRef.current.playVideo?.()
+                    const s = await spotifyPlayerRef.current.getCurrentState()
+                    if (!s) {
+                        // Null state usually means the SDK lost its audio bridge
+                        console.log('[Visibility] Spotify state null. Re-activating audio bridge...')
+                        await spotifyPlayerRef.current.activateElement()
+                        setTimeout(() => resumeRef.current(), 500)
+                    } else if (s.paused && isPlayingRef.current) {
+                        if (s.position === 0 && s.repeat_mode === 0) {
+                            console.log('[Visibility] Spotify ended while hidden. Advancing...')
+                            nextRef.current(true)
+                        } else {
+                            console.log('[Visibility] Spotify stalled mid-track. Forcing resume...')
+                            spotifyPlayerRef.current.resume().catch(() => { })
+                        }
                     }
                 } catch (e) { }
             }
 
-            // Local / SoundCloud: check if audio ended while hidden
+            // 3. YouTube/Native ... (rest of the logic remains)
+            const isLC = platform === 'local'
+            const isSC = platform === 'soundcloud'
             if ((isLC || isSC) && localAudioRef.current) {
                 const audio = localAudioRef.current
                 const isAtEnd = audio.duration > 0 && (audio.duration - audio.currentTime) < 1.5
@@ -371,24 +364,15 @@ export function GlobalPlayer() {
                 }
             }
 
-            // Spotify: check if track ended while hidden
-            if (isSP && spotifyPlayerRef.current) {
-                spotifyPlayerRef.current.getCurrentState().then((s: any) => {
-                    if (!s) {
-                        // null state = Spotify has nothing playing.
-                        // If our app thinks we're still playing, the track ended while backgrounded.
-                        if (isPlayingRef.current) {
-                            console.log('[Visibility] Spotify state is null while playing — track ended in background. Advancing...')
-                            nextRef.current(true)
-                        }
-                    } else if (s.paused && s.position === 0 && s.repeat_mode === 0) {
-                        console.log('[Visibility] Spotify ended while hidden. Advancing...')
-                        nextRef.current(true)
-                    }
-                }).catch(() => { })
+            if (isYoutube && ytPlayerRef.current && showVideo) {
+                try {
+                    const ytState = ytPlayerRef.current.getPlayerState?.()
+                    if (ytState === 0) nextRef.current(true)
+                    else if (ytState !== 1 && ytState !== 3 && isPlayingRef.current) ytPlayerRef.current.playVideo?.()
+                } catch (e) { }
             }
 
-            // Poke AudioContext heartbeat back awake
+            // 4. Poke AudioContext heartbeat
             if (heartbeatRef.current?.ctx.state === 'suspended') {
                 heartbeatRef.current.ctx.resume().catch(() => { })
             }
@@ -396,7 +380,7 @@ export function GlobalPlayer() {
 
         document.addEventListener('visibilitychange', handleVisibilityChange)
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }, [hasMounted])
+    }, [hasMounted, showVideo])
 
     // ─── Background Watchdog Worker ───
     // This worker runs independently of main-thread throttling to trigger recovery logic
@@ -423,37 +407,18 @@ export function GlobalPlayer() {
             if (!isPlayingRef.current || !currentTrackRef.current) return
 
             const platform = currentTrackRef.current.platform
-            const isYT = platform === 'youtube' || platform === 'ytmusic'
-            const isSC = platform === 'soundcloud'
             const isLC = platform === 'local'
+            const isSC = platform === 'soundcloud'
+            const isYT = platform === 'youtube' || platform === 'ytmusic'
             const isSP = platform === 'spotify'
 
-            // 1. YouTube Watchdog
-            if (isYT) {
-                if (ytPlayerRef.current && typeof ytPlayerRef.current.getPlayerState === 'function') {
-                    const state = ytPlayerRef.current.getPlayerState()
-                    if (state !== 1 && state !== 3) { // Not Playing or Buffering
-                        const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                        if (timeSinceChange > 1500 && timeSinceChange < 15000) {
-                            console.log('[YouTube] Worker-triggered Background Recovery...')
-                            ytPlayerRef.current.playVideo?.()
-                        }
-                    }
-                } else if (!ytPlayerRef.current) {
-                    const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                    if (timeSinceChange > 3000 && timeSinceChange < 15000) {
-                        const videoId = extractVideoId(currentTrackRef.current.url)
-                        if (videoId) {
-                            console.log('[YouTube] Worker-triggered Background Initialization...')
-                            initYTPlayer(videoId)
-                        }
-                    }
-                }
-            }
-
-            // 2. Native Audio Watchdog
-            if ((isLC || isSC) && localAudioRef.current) {
+            // 2. Native Audio Watchdog (Local, SoundCloud, and YouTube Proxies)
+            if ((isLC || isSC || (isYT && !showVideo)) && localAudioRef.current) {
                 const audio = localAudioRef.current
+                
+                // IGNORE recovery if this is just the silence starter
+                if (nativeStreamUrl === '/api/silence') return 
+
                 if (audio.paused && isPlayingRef.current) {
                     const timeSinceChange = Date.now() - trackChangeTimeRef.current
                     const isAtEnd = audio.duration > 0 && (audio.duration - audio.currentTime) < 1.5
@@ -470,7 +435,7 @@ export function GlobalPlayer() {
                 }
             }
 
-            // 3. Spotify Watchdog
+            // 3. Spotify SDK Watchdog
             if (isSP && spotifyPlayerRef.current) {
                 spotifyPlayerRef.current.getCurrentState().then((s: any) => {
                     if (!s) {
@@ -478,7 +443,7 @@ export function GlobalPlayer() {
                         // If app thinks we're playing and the track has been running for
                         // at least 5s (ruling out startup race), the track ended in the background.
                         const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                        if (isPlayingRef.current && timeSinceChange > 5000) {
+                        if (isPlayingRef.current && timeSinceChange > 5000 && !waitingForFocusRef.current) {
                             console.log('[Spotify] Watchdog: null state while playing — track ended in background. Advancing...')
                             nextRef.current(true)
                         }
@@ -506,6 +471,86 @@ export function GlobalPlayer() {
     }, [hasMounted])
 
     useEffect(() => {
+        if (!isYoutube || !hasMounted || !showVideo) return
+        const videoId = extractVideoId(currentTrack?.url || '')
+        if (videoId) initYTPlayer(videoId)
+    }, [isYoutube, currentTrack?.url, hasMounted, initYTPlayer, showVideo])
+
+    // Sync Play/Pause with YouTube
+    useEffect(() => {
+        if (!ytPlayerRef.current || !isYoutube) return
+        
+        if (!showVideo) {
+            try { ytPlayerRef.current.pauseVideo?.() } catch (e) { }
+            return
+        }
+
+        try {
+            const state = ytPlayerRef.current.getPlayerState?.()
+            if (isPlaying) {
+                if (state !== 1 && state !== 3) ytPlayerRef.current.playVideo?.()
+            } else {
+                if (state === 1 || state === 3) ytPlayerRef.current.pauseVideo?.()
+            }
+        } catch (e) { }
+    }, [isPlaying, isYoutube, showVideo])
+
+    // Sync Volume with YouTube
+    useEffect(() => {
+        if (!ytPlayerRef.current || !isYoutube) return
+        try {
+            if (typeof ytPlayerRef.current.setVolume === 'function') {
+                ytPlayerRef.current.setVolume(isMuted ? 0 : Math.round(volume * 100))
+            }
+        } catch (e) { }
+    }, [volume, isMuted, isYoutube])
+
+    // Sync YouTube Iframe Progress to UI
+    useEffect(() => {
+        if (!isYoutube || !showVideo || !hasMounted) return
+        
+        const interval = setInterval(() => {
+            if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function' && !isSeekingRef.current) {
+                try {
+                    const currentTime = ytPlayerRef.current.getCurrentTime()
+                    const duration = ytPlayerRef.current.getDuration()
+                    if (duration > 0) {
+                        setProgress(currentTime / duration)
+                        setDuration(duration)
+                    }
+                } catch (e) { }
+            }
+        }, 500)
+        
+        return () => clearInterval(interval)
+    }, [isYoutube, showVideo, hasMounted])
+
+
+    // Sync Spotify Progress to UI
+    useEffect(() => {
+        if (!isSpotify || !playReady || !hasMounted) return
+        
+        let interval: any = null
+        
+        if (isPlaying && !isSeeking) {
+            interval = setInterval(() => {
+                if (spotifyPlayerRef.current && typeof spotifyPlayerRef.current.getCurrentState === 'function') {
+                    spotifyPlayerRef.current.getCurrentState().then((s: any) => {
+                        if (s && s.duration > 0 && !isSeekingRef.current) {
+                            setProgress(s.position / s.duration)
+                            setDuration(s.duration / 1000)
+                        }
+                    }).catch(() => {})
+                }
+            }, 1000)
+        }
+        
+        return () => {
+            if (interval) clearInterval(interval)
+        }
+    }, [isSpotify, isPlaying, isSeeking, playReady, hasMounted])
+
+    useEffect(() => {
         if (isPlaying && (isYoutube || isSoundCloud || isSpotify || isLocal)) {
             workerRef.current?.postMessage('start')
         } else {
@@ -524,14 +569,11 @@ export function GlobalPlayer() {
     const stopAllPlayers = useCallback((exclude?: string) => {
         console.log('[GlobalPlayer] Stop all players triggered, exclude:', exclude ?? '(none — full stop)')
 
-        // 1. YouTube
         if (exclude !== 'youtube' && exclude !== 'ytmusic') {
-            try {
-                if (ytPlayerRef.current?.pauseVideo) ytPlayerRef.current.pauseVideo()
-            } catch (e) { }
+            try { if (ytPlayerRef.current?.pauseVideo) ytPlayerRef.current.pauseVideo() } catch (e) { }
         }
 
-        // 2. SoundCloud (Unified with Native Audio)
+
 
         // 3. Spotify
         if (exclude !== 'spotify') {
@@ -540,8 +582,8 @@ export function GlobalPlayer() {
             } catch (e) { }
         }
 
-        // 4. Local & SoundCloud (Native Engine)
-        if (exclude !== 'local' && exclude !== 'soundcloud') {
+        // 4. Local & SoundCloud & YouTube Native & Spotify Native (Native Engine)
+        if (exclude !== 'local' && exclude !== 'soundcloud' && exclude !== 'youtube' && exclude !== 'ytmusic' && exclude !== 'spotify') {
             if (localAudioRef.current) {
                 localAudioRef.current.pause()
                 localAudioRef.current.currentTime = 0
@@ -589,130 +631,24 @@ export function GlobalPlayer() {
         setDuration(0)
         setPlayerError(null)
 
-        // Reset ready state so loader shows up
-        // Treatment of youtube/ytmusic as same engine prevents flash of "Ready=false"
-        const isEngineReuse = isYoutube && !isPlatformChanging && ytPlayerRef.current
-        if (!isEngineReuse && (isPlatformChanging || isYoutube || isSpotify || isSoundCloud || isLocal)) {
+        if (isPlatformChanging || isYoutube || isSpotify || isSoundCloud || isLocal) {
             setPlayReady(false)
             setIsBuffering(true)
         }
 
-        if (isEmbedPlatform) setShowVideo(true)
+        // RESET GUARDS for the new track
+        // This is critical for background transitions to prevent stale state from old tracks
+        // from triggering an accidental sync-pause.
+        lastSyncedPlayState.current = null
+        lastPlayPauseActionRef.current = Date.now()
 
         // CRITICAL: Update track change time on every change
         trackChangeTimeRef.current = Date.now()
     }, [currentTrack, isEmbedPlatform, isLocal, isSpotify, isSoundCloud, stopAllPlayers])
 
-    // ─── Global Progress Sync ───
-    useEffect(() => {
-        if (!hasMounted) return
-        // If not playing and we already have a duration, we don't need to sync
-        if (!isPlaying && duration > 0) return
 
-        let interval: any
-        if (isYoutube && ytPlayerRef.current) {
-            interval = setInterval(() => {
-                const p = ytPlayerRef.current
-                if (p && typeof p.getCurrentTime === 'function' && typeof p.getDuration === 'function') {
-                    // --- STALE DATA PROTECTION ---
-                    const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                    const state = p.getPlayerState?.()
 
-                    // Don't sync if we just changed tracks (< 2s) unless actually playing
-                    if (timeSinceChange < 2000 && state !== 1) return
 
-                    const current = p.getCurrentTime()
-                    const total = p.getDuration()
-
-                    if (total > 0) {
-                        setDuration(Math.floor(total))
-                        // Only update progress if playing AND NOT currently seeking/dragging
-                        if (state === 1 && !isSeekingRef.current) {
-                            setProgress(current / total)
-                        }
-
-                        // --- AUTO-PLAY RECOVERY ---
-                        // If we should be playing but we are stuck in unstarted (-1), cued (5), or paused (2)
-                        // This handles first-play blocks and transient stalls.
-                        if (isPlayingRef.current && (state === -1 || state === 5 || state === 2)) {
-                            const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                            // Give it at least 1s to load before forcing
-                            if (timeSinceChange > 1000) {
-                                console.log('[YouTube] Recovery: Forcing play state...')
-                                p.playVideo?.()
-                            }
-                        }
-
-                        // --- BACKGROUND WATCHDOG ---
-                        // If we are near the end (99.5% or within 1s) and it seems "stuck" or ended without event
-                        const isFinished = (total - current) < 1.0 || (current / total) > 0.998
-                        if (isFinished && isPlayingRef.current && state !== 0 && state !== 3) {
-                            // Only trigger if we haven't already just changed tracks
-                            const timeSinceChange = Date.now() - trackChangeTimeRef.current
-                            if (timeSinceChange > 5000) {
-                                console.log('[YouTube] Watchdog: Transitioning background track...')
-                                nextRef.current(true)
-                            }
-                        }
-                    }
-
-                    // Occasional volume sync check
-                    if (state === 1 && typeof p.setVolume === 'function') {
-                        p.setVolume(isMutedRef.current ? 0 : Math.round(volumeRef.current * 100))
-                    }
-                }
-            }, 500)
-        }
-
-        return () => clearInterval(interval)
-    }, [isYoutube, isPlaying, hasMounted, currentTrack?.url, playReady])
-
-    useEffect(() => {
-        if (isYoutube && hasMounted) {
-            const videoId = extractVideoId(currentTrack?.url || '')
-            if (videoId) initYTPlayer(videoId)
-        }
-    }, [isYoutube, currentTrack?.url, hasMounted, initYTPlayer])
-
-    useEffect(() => {
-        if (!ytPlayerRef.current || !isYoutube || !playReady) return
-        try {
-            const playerState = ytPlayerRef.current.getPlayerState?.()
-            // Guard: if player isn't ready yet, state will be undefined — skip to avoid spurious playVideo() calls
-            if (playerState === undefined || playerState === null) return
-            console.log('[YouTube] Sync State:', playerState, 'isPlaying:', isPlaying)
-
-            if (isPlaying) {
-                // If the player is cued, unstarted, or paused, force play
-                if (playerState !== 1 && playerState !== 3) {
-                    if (typeof ytPlayerRef.current.playVideo === 'function') {
-                        ytPlayerRef.current.playVideo()
-                        // Secondary attempt after a short delay for background tabs
-                        setTimeout(() => {
-                            if (isPlayingRef.current && ytPlayerRef.current?.getPlayerState?.() !== 1) {
-                                ytPlayerRef.current?.playVideo?.()
-                            }
-                        }, 1000)
-                    }
-                }
-            } else {
-                if (playerState === 1 || playerState === 3) {
-                    if (typeof ytPlayerRef.current.pauseVideo === 'function') {
-                        ytPlayerRef.current.pauseVideo()
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('[YouTube] Sync effect failed:', e)
-        }
-    }, [isPlaying, isYoutube, playReady, currentTrack?.url])
-
-    useEffect(() => {
-        if (!ytPlayerRef.current || !isYoutube) return
-        if (typeof ytPlayerRef.current.setVolume === 'function') {
-            ytPlayerRef.current.setVolume(isMuted ? 0 : Math.round(volume * 100))
-        }
-    }, [volume, isMuted, isYoutube])
 
     const [captureStatus, setCaptureStatus] = useState<string | null>(null)
 
@@ -785,20 +721,51 @@ export function GlobalPlayer() {
         player.addListener('player_state_changed', (state: any) => {
             if (!state) return
 
+            const currentTrackData = state.track_window?.current_track
+            const trackId = currentTrackData?.id
+            const expectedTrackId = currentTrackRef.current?.url.split('track/')[1]?.split('?')[0]
+
+            // SURGICAL MUTE RECOVERY: If we are hard-muted waiting for a new track,
+            // lift the mute ONLY once the bits for the NEW track have arrived at the browser.
+            if (spotifyMuteLockedRef.current && trackId === expectedTrackId && !state.paused) {
+                console.log('[Spotify] Reactive Bitstream Match: Performing Snap-to-Start & Unmute.')
+                player.seek(0)
+                setTimeout(() => {
+                    const targetVol = isMutedRef.current ? 0 : volumeRef.current
+                    player.setVolume(targetVol)
+                    spotifyMuteLockedRef.current = false
+                    console.log('[Spotify] Surgical Mute lifted.')
+                }, 400)
+            }
+
             // CRITICAL: If we are in the middle of starting a new Spotify track
-            // (the transition sequence calls pause() before play/), block ALL
-            // state events until the sequence completes. This prevents the pause()
-            // call from being misread as a user-initiated pause.
+            // block events UNLESS it's the specific track we are trying to play.
             if (spotifyTransitionActiveRef.current) {
-                console.log('[Spotify] Ignoring state event during transition (spotifyTransitionActive)')
-                return
+                if (trackId === expectedTrackId && !state.paused) {
+                    // Lock bypass: Allow event through
+                } else {
+                    return
+                }
+            }
+
+            // SDK TAKEOVER: If we just pulsed the window to focus, re-minimize it now that music is playing
+            if (state && !state.paused && spotifyGhostHandActiveRef.current) {
+                console.log('[Spotify] SDK takeover detected. Entering Stealth Mode (auto-minimize)...')
+                const tid = currentTrackRef.current?.id
+                setTimeout(() => {
+                    // Safety: only minimize if we are still on that same track
+                    if (currentTrackRef.current?.id === tid) {
+                        fetch('/api/minimize-window').catch(() => { })
+                    }
+                }, 400)
+                spotifyGhostHandActiveRef.current = false
             }
 
             const now = Date.now()
             const timeSinceChange = now - trackChangeTimeRef.current
             const timeSinceLastNextAction = now - lastNextActionTimeRef.current
-            // Determine if we are transiting based on UI track changes OR recent auto-next actions
-            const isTransiting = timeSinceChange < 3500 || timeSinceLastNextAction < 3500
+            // INCREASED TRANSITION WINDOW: Background tabs need more time to sync state.
+            const isTransiting = timeSinceChange < 5000 || timeSinceLastNextAction < 5000
 
             // CRITICAL: Only process Spotify events if we are actually ON the Spotify platform
             // This prevents "Autoplay" or background Spotify activity from hijacking the UI
@@ -809,12 +776,8 @@ export function GlobalPlayer() {
                 return
             }
 
-            const currentTrackData = state.track_window?.current_track
-            const trackId = currentTrackData?.id
-            const expectedTrackId = currentTrackRef.current?.url.split('track/')[1]?.split('?')[0]
-
             // Detect natural end of track
-            const trackIdFromSDK = state.track_window?.current_track?.id
+            const trackIdFromSDK = trackId
             const isEndOfTrack = state.position === 0 && state.paused && state.repeat_mode === 0
 
             // SAFEGUARD: If we are in the middle of a track change and the SDK is reporting
@@ -827,15 +790,22 @@ export function GlobalPlayer() {
             // 1. Sync Play/Pause State
             const isPaused = state.paused
 
+            // ANTI-LOOP COOLDOWN: If we just toggled play/pause locally, ignore SDK
+            // state for a bit to avoid fighting with throttled/stale background events.
+            const timeSinceSync = now - lastPlayPauseActionRef.current
+            // In background tabs, Spotify state events are often heavily delayed/stale.
+            const guardTime = document.hidden ? 4000 : 1500
+            const skipExternalSync = isTransiting || timeSinceSync < guardTime
+
             if (isPaused) {
                 // If Spotify is paused but our UI thinks it's playing, sync it back
-                // unless we are transiting OR the track naturally finished.
-                if (isPlayingRef.current && !isTransiting && !isEndOfTrack) {
+                // unless we are transiting OR we just toggled locally.
+                if (isPlayingRef.current && !skipExternalSync && !isEndOfTrack) {
                     console.log('[Spotify] External Pause detected, syncing UI...')
                     pauseRef.current()
                 }
             } else {
-                if (!isPlayingRef.current) {
+                if (!isPlayingRef.current && !skipExternalSync) {
                     console.log('[Spotify] External Play detected, syncing UI...')
                     resumeRef.current()
                 }
@@ -854,17 +824,8 @@ export function GlobalPlayer() {
                 }
             }
 
-            // 4. Real-time Progress Tracking
-            clearInterval(spotifyIntervalRef.current)
-            if (!isPaused) {
-                spotifyIntervalRef.current = setInterval(() => {
-                    player.getCurrentState().then((s: any) => {
-                        if (s && !isSeekingRef.current) {
-                            setProgress(s.position / s.duration)
-                        }
-                    })
-                }, 1000)
-            }
+            // 4. Real-time Progress Tracking - Update duration immediately
+            setDuration(state.duration / 1000)
         })
 
         player.addListener('authentication_error', ({ message }: any) => {
@@ -878,6 +839,7 @@ export function GlobalPlayer() {
 
     useEffect(() => {
         if (!hasMounted) return
+        console.log('[Spotify] Engine v1.0.3 Active')
         if (spotifyToken) {
             if (!window.Spotify) {
                 const script = document.createElement('script')
@@ -899,81 +861,76 @@ export function GlobalPlayer() {
         const maxRetries = 3
         let cancelled = false
 
+        const trackId = currentTrack?.url.split('track/')[1]?.split('?')[0]
         const playSpotifyTrack = async () => {
-            if (!spotifyPlayerRef.current?._deviceId) return
-            const trackId = currentTrack?.url.split('track/')[1]?.split('?')[0]
-            if (!trackId || !spotifyToken) return
+            // FIRST-TRACK FIX: Wait for the Spotify SDK to be ready (device connected)
+            // before attempting to play. On cold start, the SDK may not have a deviceId yet.
+            const waitForDevice = (): Promise<boolean> => new Promise((resolve) => {
+                if (spotifyPlayerRef.current?._deviceId) return resolve(true)
+                let waited = 0
+                const poll = setInterval(() => {
+                    waited += 250
+                    if (spotifyPlayerRef.current?._deviceId) {
+                        clearInterval(poll)
+                        resolve(true)
+                    } else if (waited >= 12000) {
+                        clearInterval(poll)
+                        console.warn('[Spotify] Device did not become ready within 12s')
+                        resolve(false)
+                    }
+                }, 250)
+            })
+
+            const deviceReady = await waitForDevice()
+            if (cancelled || !deviceReady) return
 
             // Block player_state_changed from reacting to intermediate pause/play events
-            // during the entire start sequence. This prevents the pre-play pause()
-            // call from being misread as a user-initiated external pause.
             spotifyTransitionActiveRef.current = true
-            lastNextActionTimeRef.current = Date.now() // also set transition window
+            lastNextActionTimeRef.current = Date.now()
             trackChangeTimeRef.current = Date.now()
 
             try {
+                // SURGICAL MUTE: Kill volume during handoff to prevent "Previous Track Echo"
+                spotifyMuteLockedRef.current = true
+                try { await spotifyPlayerRef.current.setVolume(0) } catch (e) { }
+
                 // Stop any current playback cleanly
                 try { await spotifyPlayerRef.current.pause() } catch (e) { }
-                if (cancelled) return
-
-                const attemptPlay = async (): Promise<boolean> => {
-                    try {
-                        const res = await fetch(
-                            `https://api.spotify.com/v1/me/player/play?device_id=${spotifyPlayerRef.current._deviceId}`,
-                            {
-                                method: 'PUT',
-                                body: JSON.stringify({ uris: [`spotify:track:${trackId}`] }),
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${spotifyTokenRef.current || spotifyToken}`
-                                }
-                            }
-                        )
-
-                        if (res.status === 404) return false
-
-                        if (!res.ok) {
-                            const errData = await res.json().catch(() => ({}))
-                            if (errData.error?.message === 'Player command failed: No active device found') return false
-                            throw new Error(errData.error?.message || 'Play failed')
-                        }
-
-                        return true
-                    } catch (err) {
-                        console.error('[Spotify] Play Attempt Failed:', err)
-                        return false
-                    }
-                }
-
-                // Small initial delay to let the SDK settle after the pause
                 await new Promise(r => setTimeout(r, 200))
-                if (cancelled) return
 
-                while (retryCount <= maxRetries) {
-                    const success = await attemptPlay()
-                    if (cancelled) return
-                    if (success) break
-                    retryCount++
-                    if (retryCount <= maxRetries) {
-                        console.log(`[Spotify] Retrying play (${retryCount}/${maxRetries})...`)
-                        await new Promise(r => setTimeout(r, 600 * retryCount))
-                        if (cancelled) return
-                    }
-                }
+                // PYTHON-KICK: Delegate pulse & session logic to the backend
+                const tid = currentTrackRef.current?.id
+                const trackUri = `spotify:track:${trackId}`
+                const kickUrl = `/api/spotify-kick?device_id=${spotifyPlayerRef.current._deviceId}&token=${spotifyToken}&track_uri=${trackUri}&is_hidden=${document.hidden}`
+                
+                // Fire and monitor; we don't want to block the entire UI thread 
+                // but we do need the SDK to be warmed up.
+                fetch(kickUrl).then(() => {
+                    console.log('[Spotify] Backend Kick confirmed.')
+                }).catch(() => { })
+                
+                if (cancelled || currentTrackRef.current?.id !== tid) return
 
-                if (retryCount > maxRetries) {
-                    setPlayerError('Spotify failed to start. Try clicking Play again.')
-                } else {
+                // Wait briefly for the Pulse to hit the browser process before activation
+                await new Promise(r => setTimeout(r, 1000))
+
+                // CORE SYNC: Ensure the local SDK is now in sync with the Cloud Play
+                try { await spotifyPlayerRef.current.activateElement() } catch (e) { }
+
+                if (!cancelled && spotifyPlayerRef.current) {
                     setPlayReady(true)
                     setIsBuffering(false)
-                    console.log('[Spotify] Track start sequence complete:', trackId)
+                    spotifyActivationDoneRef.current = true
+                    
+                    // Note: Unmute now happens reactively in the player_state_changed listener
+                    // once the bitstream for the new track is confirmed by the SDK.
+                    console.log('[Spotify] Session Kick Complete (v1.8.6). Waiting for bitstream...')
                 }
             } finally {
-                // Always release the transition block, even on error
-                // Wait a bit so any in-flight state events from the play command are skipped too
+                const releaseDelay = document.hidden ? 4000 : 800
                 setTimeout(() => {
                     if (!cancelled) spotifyTransitionActiveRef.current = false
-                }, 1500)
+                }, releaseDelay)
             }
         }
 
@@ -986,21 +943,40 @@ export function GlobalPlayer() {
     }, [isSpotify, currentTrack?.url, hasMounted, spotifyToken])
 
     // Sync Play/Pause with Spotify
-    // IMPORTANT: Only sync after the track is actually loaded (playReady=true).
-    // This prevents premature resume() calls during the track-start sequence,
-    // which would fight against the carefully ordered pause→play sequence.
+    const lastSyncedPlayState = useRef<boolean | null>(null)
     useEffect(() => {
         if (!spotifyPlayerRef.current || !isSpotify || !playReady) return
 
-        // GUARD: Don't sync if the transition block is active
-        if (spotifyTransitionActiveRef.current) return
+        // ANTI-LOOP GUARD: Prevent redundant API calls
+        if (lastSyncedPlayState.current === isPlaying) return
 
-        // GUARD: Let the specialized playSpotifyTrack effect handle initial state.
+        // GUARD: If pausing, we always allow it (user intent is clear).
+        // If resuming, we wait for transition to end to avoid fighting startup states.
         const timeSinceChange = Date.now() - trackChangeTimeRef.current
-        if (timeSinceChange < 2000) return
+        const isTransitioning = spotifyTransitionActiveRef.current || timeSinceChange < 1500
+        
+        // ALLOW-LIST: If the UI says we are playing, but the SDK is stuck in transition,
+        // we allow one manual resume to "break" the deadlock if enough time has passed.
+        if (isPlaying && isTransitioning && timeSinceChange < 800) return
 
-        if (isPlaying) spotifyPlayerRef.current.resume().catch(() => {})
-        else spotifyPlayerRef.current.pause().catch(() => {})
+        lastSyncedPlayState.current = isPlaying
+        lastPlayPauseActionRef.current = Date.now()
+
+        if (isPlaying) {
+            spotifyPlayerRef.current.resume().catch(() => { })
+        } else {
+            spotifyPlayerRef.current.pause().then(() => {
+                // Background/Throttled Verification: Ensure it actually paused
+                setTimeout(() => {
+                    spotifyPlayerRef.current?.getCurrentState().then((s: any) => {
+                        if (s && !s.paused && !isPlayingRef.current) {
+                            console.log('[Spotify] Pause verification trigger: Re-sending pause...')
+                            spotifyPlayerRef.current.pause().catch(() => {})
+                        }
+                    })
+                }, 800)
+            }).catch(() => { })
+        }
     }, [isPlaying, isSpotify, playReady])
 
     // Sync Volume with Spotify
@@ -1009,18 +985,17 @@ export function GlobalPlayer() {
         spotifyPlayerRef.current.setVolume(isMuted ? 0 : volume)
     }, [volume, isMuted, isSpotify])
 
-    // ─── SoundCloud Logic (API/SDK) ───
-    // ─── SoundCloud Logic (Backend Proxy Mode) ───
+    // ─── Stream Resolution (SoundCloud & YouTube Only) ───
     useEffect(() => {
-        if (!isSoundCloud || !hasMounted || !currentTrack?.url) {
-            setScStreamUrl(null)
+        const streamablePlatform = isSoundCloud || isYoutube
+        if (!streamablePlatform || !hasMounted || !currentTrack?.url) {
+            setNativeStreamUrl(null)
             return
         }
 
-        // Synchronously clear old stream URL to prevent race conditions
-        setScStreamUrl(null)
-        const trackId = currentTrack.id
-
+        const sid = currentTrack.id
+        setNativeStreamUrl(null) // IMMEDIATE CLEAR: Kill the previous track's buffer/source
+        
         const fetchStream = async () => {
             setPlayReady(false)
             setIsBuffering(true)
@@ -1028,64 +1003,73 @@ export function GlobalPlayer() {
             setDuration(0)
 
             try {
-                const res = await fetch(`/api/soundcloud-resolve?url=${encodeURIComponent(currentTrack.url)}`)
+                let endpoint = ''
+                if (isSoundCloud) endpoint = `soundcloud-resolve?url=${encodeURIComponent(currentTrack.url)}`
+                else if (isYoutube) endpoint = `yt-resolve?url=${encodeURIComponent(currentTrack.url)}`
+
+                const res = await fetch(`/api/${endpoint}`)
                 const data = await res.json()
 
-                // Only update if we are still on the same track
-                if (currentTrackRef.current?.id === trackId && data.success && data.stream_url) {
-                    console.log('[SoundCloud] Backend resolved stream URL')
-                    setScStreamUrl(data.stream_url)
-                } else if (data.error) {
-                    throw new Error(data.error)
+                if (currentTrackRef.current?.id === sid && data.success && data.stream_url) {
+                    setNativeStreamUrl(data.stream_url)
+                    if (data.duration) setDuration(data.duration)
                 }
-            } catch (err) {
-                if (currentTrackRef.current?.id === trackId) {
-                    console.error('[SoundCloud] Resolve failed:', err)
-                    setPlayerError('SoundCloud API resolution failed. Please ensure backend is running.')
-                }
+            } catch (err) { }
+            finally {
+                if (currentTrackRef.current?.id === sid) setIsBuffering(false)
             }
         }
-
         fetchStream()
-    }, [isSoundCloud, hasMounted, currentTrack?.url, currentTrack?.id])
+    }, [isSoundCloud, isYoutube, hasMounted, currentTrack?.url, currentTrack?.id])
 
 
 
 
-    // ─── Local Music Logic ───
-    // 1. URL Change: Force a hard reload of the audio engine
+    // ─── Native Audio Engine (Local & Resolved Streams) ───
     useEffect(() => {
-        if (!localAudioRef.current || (!isLocal && !isSoundCloud) || !currentTrack?.url) return
-        if (isSoundCloud && !scStreamUrl) return // Wait for proxy resolution
-        const audio = localAudioRef.current
+        if (!localAudioRef.current || !hasMounted) return
 
-        console.log('[NativeAudio] Loading source:', isLocal ? currentTrack.url : scStreamUrl)
-        audio.load()
+        // Handle local files OR resolved streams (SoundCloud/YouTube)
+        // If YouTube, only use native audio if we are NOT in video mode
+        const isNativeActive = isLocal || 
+                              (isSoundCloud && nativeStreamUrl) || 
+                              (isYoutube && nativeStreamUrl && !showVideo)
 
-        if (isPlaying) {
-            audio.play().catch(err => {
-                if (err.name !== 'AbortError') console.warn('[NativeAudio] URL change play failed:', err)
-            })
+        if (!isNativeActive || !currentTrack?.url) {
+            localAudioRef.current.pause()
+            return
         }
-    }, [currentTrack?.url, isLocal, isSoundCloud, scStreamUrl])
 
-    // 2. Play/Pause/Volume Sync
+        const audio = localAudioRef.current
+        const sourceUrl = isLocal ? currentTrack.url : nativeStreamUrl
+
+        if (sourceUrl && audio.src !== sourceUrl) {
+            console.log('[NativeAudio] Loading source:', isLocal ? 'Local File' : 'Resolved Stream')
+            audio.src = sourceUrl
+            audio.load()
+            setPlayReady(true)
+
+            if (isPlaying) {
+                audio.play().catch(err => {
+                    if (err.name !== 'AbortError') console.warn('[NativeAudio] Play failed:', err)
+                })
+            }
+        }
+    }, [isLocal, isSoundCloud, isYoutube, nativeStreamUrl, hasMounted, currentTrack?.url, showVideo])
+
     useEffect(() => {
-        if (!localAudioRef.current || (!isLocal && !isSoundCloud)) return
-        if (isSoundCloud && !scStreamUrl) return // Wait for proxy resolution
+        if (!localAudioRef.current || (!isLocal && !isSoundCloud && !isYoutube)) return
+        if (isYoutube && (showVideo || !nativeStreamUrl)) return
+        
         const audio = localAudioRef.current
         audio.volume = isMuted ? 0 : volume
 
         if (isPlaying) {
-            if (audio.paused) {
-                audio.play().catch(err => {
-                    if (err.name !== 'AbortError') console.warn('[LocalPlayer] Sync play failed:', err)
-                })
-            }
+            if (audio.paused) audio.play().catch(() => { })
         } else {
             if (!audio.paused) audio.pause()
         }
-    }, [isPlaying, isLocal, volume, isMuted])
+    }, [isPlaying, isLocal, isSoundCloud, isYoutube, nativeStreamUrl, volume, isMuted, showVideo])
 
 
     // ─── MediaSession API (Background Controls & Metadata) ───
@@ -1128,102 +1112,97 @@ export function GlobalPlayer() {
 
     return (
         <>
+            {/* Visual content container (YouTube Pop-up) */}
+            {hasTrack && isYoutube && showVideo && (
+                <div className="fixed bottom-[110px] left-6 z-[60] w-[320px] h-[180px] bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 animate-fadeInUp backdrop-blur-xl">
+                    <div className="absolute top-2 right-2 z-30">
+                        <button
+                            onClick={() => setShowVideo(false)}
+                            className="p-1.5 bg-black/60 hover:bg-black/80 rounded-full text-white/70 hover:text-white transition-colors backdrop-blur-md"
+                        >
+                            <VolumeX size={10} className="rotate-45" />
+                        </button>
+                    </div>
+                    <div id="yt-player" className="w-full h-full" />
+                </div>
+            )}
+
             {/* Visual content container (YouTube / SoundCloud / Apple) */}
             <div
-                style={{
-                    opacity: 1,
-                    width: hasTrack && showVideo && isEmbedPlatform ? '340px' : '4px',
-                    height: hasTrack && showVideo && isEmbedPlatform ? '240px' : '4px',
-                    left: hasTrack && showVideo && isEmbedPlatform ? '24px' : '-10px',
-                    overflow: 'hidden',
-                    visibility: hasTrack ? 'visible' : 'hidden'
-                }}
                 className={clsx(
-                    "fixed bottom-[110px] z-[60] transition-all duration-300 ease-out flex flex-col items-start gap-3",
-                    hasTrack && showVideo && isEmbedPlatform ? 'translate-y-0' : 'pointer-events-none'
+                    "fixed bottom-[110px] z-[60] transition-all duration-300 ease-out flex flex-col items-start gap-3 px-6",
+                    hasTrack && isEmbedPlatform ? 'translate-y-0' : 'pointer-events-none opacity-0 translate-y-full'
                 )}>
-                {/* External Sync Button */}
-                {hasTrack && isYoutube && (showVideo || playerError) && (
-                    <button
-                        disabled={isCapturing}
-                        onClick={() => handleCaptureToLocal('audio')}
-                        className="group/sync flex items-center gap-2.5 px-4 py-2 rounded-full bg-surface/80 border border-accent/20 backdrop-blur-md hover:bg-accent/10 hover:border-accent/40 transition-all shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
-                    >
-                        {isCapturing ? (
-                            <Loader2 size={12} className="animate-spin text-accent" />
-                        ) : (
-                            <CloudDownload size={12} className="text-accent group-hover/sync:scale-110 transition-transform" />
-                        )}
-                        <span className="font-mono-custom text-[9px] uppercase tracking-[2px] font-bold text-accent">
-                            {isCapturing ? 'Capturing...' : 'Sync to Audio Library'}
-                        </span>
-                        {!isCapturing && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shadow-[0_0_8px_rgba(200,255,0,0.8)]" />
-                        )}
-                    </button>
-                )}
-
-                <div className="relative group">
-                    <div className="w-[320px] h-[180px] bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center">
-                        <div className="absolute top-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                                onClick={() => setShowVideo(false)}
-                                className="p-1.5 bg-black/60 hover:bg-black/80 rounded-full text-white/70 hover:text-white transition-colors backdrop-blur-md"
-                            >
-                                <VolumeX size={10} className="rotate-45" />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 w-full h-full relative bg-black overflow-hidden">
-                            {/* YouTube: Persistent Div (Stable container) */}
-                            <div className={clsx("w-full h-full absolute inset-0", !isYoutube && "opacity-0 pointer-events-none")}>
-                                <div id="yt-player" className="w-full h-full" />
+                {/* YouTube: Audio Recovery UI */}
+                {hasTrack && isYoutube && (
+                    <div className="flex flex-col gap-2">
+                        <button
+                            disabled={isCapturing}
+                            onClick={() => handleCaptureToLocal('audio')}
+                            className="group/sync flex items-center gap-2.5 px-4 py-2 rounded-full bg-surface/80 border border-accent/20 backdrop-blur-md hover:bg-accent/10 hover:border-accent/40 transition-all shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
+                        >
+                            {isCapturing ? (
+                                <Loader2 size={12} className="animate-spin text-accent" />
+                            ) : (
+                                <CloudDownload size={12} className="text-accent group-hover/sync:scale-110 transition-transform" />
+                            )}
+                            <span className="font-mono-custom text-[9px] uppercase tracking-[2px] font-bold text-accent">
+                                {isCapturing ? 'Capturing...' : 'Sync to Audio Library'}
+                            </span>
+                            {!isCapturing && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shadow-[0_0_8px_rgba(200,255,0,0.8)]" />
+                            )}
+                        </button>
+                        
+                        {playerError && (
+                            <div className="px-4 py-3 rounded-2xl bg-black/95 border border-red-500/20 backdrop-blur-xl animate-fadeIn max-w-[280px]">
+                                <div className="flex items-center gap-2 mb-1.5 text-red-500">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                    <span className="text-[10px] font-mono-custom uppercase tracking-[2px]">Stream Error</span>
+                                </div>
+                                <p className="text-[9px] text-red-400 font-mono-custom leading-relaxed uppercase">
+                                    {playerError}
+                                </p>
                             </div>
-
-
-                            {/* Apple: Conditionally Rendered */}
-                            {isApple && (
-                                <iframe
-                                    src={currentTrack.url.replace('music.apple.com', 'embed.music.apple.com')}
-                                    className="w-full h-full border-0"
-                                    allow="autoplay; encrypted-media; fullscreen"
-                                />
-                            )}
-
-                            {playerError && (isSpotify || !playerError.includes('Spotify')) && (
-                                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/95 gap-4 p-4 text-center animate-fadeIn">
-                                    <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center mb-1">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                                    </div>
-                                    <div className="text-[10px] text-red-500 font-mono-custom uppercase tracking-[2px] leading-relaxed max-w-[240px]">
-                                        {playerError}
-                                    </div>
-                                    <div className="text-[8px] text-white/30 font-mono-custom uppercase tracking-widest mt-1">
-                                        Use sync tool above to rescue
-                                    </div>
-                                </div>
-                            )}
-                            {captureStatus && (
-                                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] text-accent font-mono-custom text-[10px] uppercase tracking-[4px] drop-shadow-[0_0_10px_rgba(200,255,0,0.6)] animate-pulse">
+                        )}
+                        
+                        {captureStatus && (
+                            <div className="px-4 py-2 rounded-full bg-accent/10 border border-accent/20 backdrop-blur-md animate-pulse">
+                                <span className="text-accent font-mono-custom text-[9px] uppercase tracking-[3px] font-bold">
                                     {captureStatus}
-                                </div>
-                            )}
-                        </div>
+                                </span>
+                            </div>
+                        )}
                     </div>
-                </div>
+                 )}
             </div>
 
-            {/* Local & SoundCloud audio element - Persistent source management */}
-            {(isLocal || (isSoundCloud && scStreamUrl)) && currentTrack && (
+            {/* Native Audio Layer (Local/SoundCloud/YouTube) */}
+            {(isLocal || (isSoundCloud && nativeStreamUrl) || (isYoutube && nativeStreamUrl)) && currentTrack && (
                 <audio
+                    key={currentTrack?.id || 'native-audio'}
                     ref={localAudioRef}
-                    src={isLocal ? currentTrack.url : (scStreamUrl as string)}
+                    src={isLocal ? currentTrack.url : (nativeStreamUrl as string)}
                     preload="auto"
                     autoPlay={isPlaying} // Native Handoff
-                    onEnded={() => nextRef.current(true)}
+                    onEnded={() => {
+                        // ANTI-SKIP GUARD: Only allow native audio to trigger NEXT if:
+                        // 1. We are actually on a native platform (not Spotify/Apple)
+                        // 2. We aren't in the middle of a global track transition
+                        const isNativePlatform = isLocal || isSoundCloud || isYoutube
+                        const now = Date.now()
+                        const isTransiting = (now - trackChangeTimeRef.current < 5000) || (now - lastNextActionTimeRef.current < 5000)
+                        
+                        if (isNativePlatform && !isTransiting) {
+                            console.log('[NativeAudio] Track ended naturally. Moving next...')
+                            nextRef.current(true)
+                        } else {
+                            console.log('[NativeAudio] Suppressing stale onEnded signal during transition.')
+                        }
+                    }}
                     onTimeUpdate={(e) => {
                         const a = e.currentTarget
-                        if (a.duration && !isSeekingRef.current) {
+                        if (a.duration && !isSeekingRef.current && nativeStreamUrl !== '/api/silence') {
                             setProgress(a.currentTime / a.duration)
                             setDuration(a.duration)
                         }
@@ -1234,12 +1213,11 @@ export function GlobalPlayer() {
                         if (isPlayingRef.current) {
                             const audio = e.currentTarget
                             audio.play().catch(() => { })
-                            
+
                             // Secondary attempt for background transitions
                             let attempts = 0
                             const forcePlay = () => {
                                 if (audio.paused && attempts < 15 && isPlayingRef.current) {
-                                    console.log('[NativeAudio] Background Play Attempt:', attempts + 1)
                                     audio.play().catch(() => { })
                                     attempts++
                                     setTimeout(forcePlay, 500)
@@ -1251,12 +1229,8 @@ export function GlobalPlayer() {
                     onWaiting={() => setIsBuffering(true)}
                     onPlaying={() => setIsBuffering(false)}
                     onError={(e) => {
-                        const err = e.currentTarget.error
-                        console.error('[LocalPlayer] Audio Error Object:', err)
-                        if (err) {
-                            console.error(`[LocalPlayer] Code: ${err.code}, Message: ${err.message}`)
-                        }
-                        setPlayerError('Audio playback failed. Please check the source or your network.')
+                        console.error('[NativeAudio] Error:', e.currentTarget.error)
+                        setPlayerError('Audio stream failed. The link might be expired.')
                     }}
                 />
             )}
@@ -1281,24 +1255,38 @@ export function GlobalPlayer() {
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-muted"><Music2 size={24} /></div>
                             )}
-                            {hasTrack && isEmbedPlatform && (
-                                <button
-                                    onClick={() => setShowVideo(!showVideo)}
-                                    className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]"
-                                    title={showVideo ? "Minimize Mini-Player" : "Restore Mini-Player"}
-                                >
-                                    <Maximize2 size={18} className="text-white" />
-                                </button>
-                            )}
+
                         </div>
                         <div className="min-w-0">
                             <h4 className="font-bold text-sm truncate text-text">{currentTrack?.title || 'No track selected'}</h4>
                             <p className="text-xs text-muted truncate mt-0.5">{currentTrack?.artist || 'Unknown Artist'}</p>
                             {hasTrack && (
-                                <div className="flex items-center gap-1.5 mt-1">
+                                <div className="flex items-center gap-2 mt-1">
                                     <span className="px-1.5 py-0.5 rounded-md bg-surface2 text-[9px] font-black uppercase tracking-wider text-muted border border-border">
                                         {platformDisplayName(currentTrack.platform)}
                                     </span>
+                                    {isYoutube && (
+                                        <button 
+                                            onClick={() => {
+                                                const nextShowVideo = !showVideo
+                                                // Handoff sync: Iframe -> Native
+                                                if (!nextShowVideo && ytPlayerRef.current && localAudioRef.current) {
+                                                    try {
+                                                        const currentTime = ytPlayerRef.current.getCurrentTime()
+                                                        localAudioRef.current.currentTime = currentTime
+                                                    } catch (e) {}
+                                                }
+                                                setShowVideo(nextShowVideo)
+                                            }}
+                                            className={clsx(
+                                                "p-1 rounded-md transition-all",
+                                                showVideo ? "bg-accent/20 text-accent shadow-[0_0_10px_rgba(200,255,0,0.2)]" : "bg-surface2 text-muted hover:text-text border border-border"
+                                            )}
+                                            title="View Video"
+                                        >
+                                            <Video size={10} />
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -1312,7 +1300,14 @@ export function GlobalPlayer() {
                             </button>
                             <button onClick={prev} className="text-muted hover:text-text transition-colors"><SkipBack size={22} fill="currentColor" /></button>
                             <button
-                                onClick={isPlaying ? pause : resume}
+                                onClick={() => {
+                                    // BROWSER POLICY: Unlock audio on gesture
+                                    if (isSpotify && spotifyPlayerRef.current) {
+                                        spotifyPlayerRef.current.activateElement().catch(() => { })
+                                    }
+                                    if (isPlaying) pause()
+                                    else resume()
+                                }}
                                 disabled={!playReady}
                                 className="w-10 h-10 rounded-full bg-text text-bg flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-text/10"
                             >
@@ -1341,14 +1336,15 @@ export function GlobalPlayer() {
                                     setIsSeeking(true)
                                     const newProgress = val[0]
                                     setProgress(newProgress)
-                                    if (isYoutube && ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
-                                        ytPlayerRef.current.seekTo(newProgress * duration, true)
-                                    }
+
                                     if (isSpotify && spotifyPlayerRef.current) {
                                         spotifyPlayerRef.current.seek(newProgress * duration * 1000)
                                     }
-                                    if (isSoundCloud || (isLocal && localAudioRef.current)) {
+                                    if (isSoundCloud || isLocal || (isYoutube && nativeStreamUrl && !showVideo)) {
                                         if (localAudioRef.current) localAudioRef.current.currentTime = newProgress * duration
+                                    }
+                                    if (isYoutube && showVideo && ytPlayerRef.current) {
+                                        try { ytPlayerRef.current.seekTo(newProgress * duration, true) } catch (e) { }
                                     }
                                 }}
                                 onValueCommit={() => {

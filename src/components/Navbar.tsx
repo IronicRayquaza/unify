@@ -99,15 +99,26 @@ export function Navbar({ playlist, onRename }: Props) {
             {!isConnected ? (
               <button
                 onClick={connectSpotify}
-                className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1DB954]/10 border border-[#1DB954]/20 text-[#1DB954] hover:bg-[#1DB954]/20 transition-all mr-2"
+                className="group relative hidden lg:flex items-center gap-2 px-5 py-2 rounded-full overflow-hidden transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-[#1DB954]/40 mr-2"
+                style={{
+                  background: 'linear-gradient(135deg, #1DB954 0%, #169c46 100%)',
+                }}
               >
-                <Music size={12} />
-                <span className="font-mono-custom text-[10px] tracking-wider uppercase">Connect Spotify</span>
+                {/* Glassy Shimmer Effect */}
+                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" style={{ pointerEvents: 'none' }} />
+                
+                {/* Pulse Glow Layer */}
+                <div className="absolute inset-0 rounded-full bg-[#1DB954] opacity-0 group-hover:block blur-md group-hover:animate-pulse-glow" style={{ zIndex: -1 }} />
+
+                <Music size={14} className="text-white drop-shadow-md" />
+                <span className="font-mono-custom text-[11px] font-bold tracking-widest uppercase text-white drop-shadow-md">
+                  Connect Spotify
+                </span>
               </button>
             ) : (
-              <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface2 border border-border mr-2 opacity-60 hover:opacity-100 transition-opacity cursor-pointer group relative" title="Connected to Spotify">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#1DB954]" />
-                <span className="font-mono-custom text-[10px] text-muted tracking-wider uppercase">Spotify Active</span>
+              <div className="hidden lg:flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface2/40 border border-[#1DB954]/30 mr-2 hover:bg-surface2/60 hover:border-[#1DB954]/50 transition-all cursor-pointer group relative shadow-[0_0_15px_rgba(29,185,84,0.05)]" title="Connected to Spotify">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#1DB954] shadow-[0_0_8px_rgba(29,185,84,0.8)] animate-pulse" />
+                <span className="font-mono-custom text-[10px] text-[#1DB954]/90 font-bold tracking-widest uppercase">Spotify Active</span>
                 <button onClick={disconnectSpotify} className="absolute inset-0 w-full h-full opacity-0" aria-label="Disconnect Spotify"></button>
               </div>
             )}

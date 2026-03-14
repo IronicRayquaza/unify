@@ -103,7 +103,14 @@ export function SortableTrackCard({ track, index, isPlaying, onPlay, onRemove, o
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="font-mono-custom text-xs text-muted truncate">{track.artist}</span>
-          <span className={clsx('font-mono-custom text-[10px] px-2 py-0.5 rounded-full tracking-wider uppercase flex-shrink-0', platformTagClass(track.platform))}>
+          <span 
+            className="font-mono-custom text-[9px] px-1.5 py-0.5 rounded-md tracking-[1px] uppercase flex-shrink-0 font-bold border border-current opacity-90"
+            style={{ 
+              color: platformColor(track.platform), 
+              backgroundColor: `${platformColor(track.platform)}12`,
+              borderColor: `${platformColor(track.platform)}30`
+            }}
+          >
             {platformDisplayName(track.platform)}
           </span>
           {track.duration && (

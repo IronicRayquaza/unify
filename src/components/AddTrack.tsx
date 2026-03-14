@@ -2,9 +2,9 @@
 
 import { useState, useRef, ChangeEvent, useEffect } from 'react'
 import { Track, Platform, ResolveResponse } from '@/types'
-import { detectPlatform, isValidUrl, platformDisplayName } from '@/lib/platform'
+import { detectPlatform, isValidUrl, platformDisplayName, platformColor } from '@/lib/platform'
 import { v4 as uuidv4 } from 'uuid'
-import { Plus, Loader2, X, Search, Upload } from 'lucide-react'
+import { Plus, Loader2, X, Search, Upload, Music } from 'lucide-react'
 import clsx from 'clsx'
 import { useSpotify } from '@/lib/spotify-context'
 import { supabase } from '@/lib/supabase'
@@ -478,13 +478,20 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
                 No {filter} results found for this search.
 
                 {((filter === 'all' && !searchResults.some(r => r.platform === 'spotify')) || filter === 'spotify') && !isConnected && (
-                  <div className="mt-4 p-4 bg-spotify/5 border border-spotify/20 rounded-xl">
-                    <p className="text-spotify font-bold mb-2">Want Spotify results?</p>
+                  <div className="mt-4 p-5 bg-spotify/5 border border-spotify/20 rounded-2xl relative overflow-hidden group">
+                    <p className="text-spotify font-mono-custom text-[11px] font-bold mb-3 uppercase tracking-wider">Want Spotify results?</p>
                     <button
                       onClick={login}
-                      className="px-4 py-2 bg-spotify text-bg rounded-lg font-display font-bold hover:scale-105 transition-all"
+                      className="relative px-6 py-2.5 bg-[#1DB954] text-white rounded-xl font-display font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg hover:shadow-[#1DB954]/30 overflow-hidden"
+                      style={{ background: 'linear-gradient(135deg, #1DB954 0%, #169c46 100%)' }}
                     >
-                      Login with Spotify
+                      {/* Inner Shimmer */}
+                      <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" style={{ pointerEvents: 'none' }} />
+                      
+                      <span className="relative z-10 flex items-center gap-2">
+                        <Music size={14} />
+                        Login with Spotify
+                      </span>
                     </button>
                   </div>
                 )}
@@ -497,9 +504,9 @@ export function AddTrack({ playlistId, existingUrls, onAdd }: Props) {
       {/* Platform hints (show only if no search results) */}
       {searchResults.length === 0 && (
         <div className="flex gap-2 mt-3 flex-wrap">
-          {PLATFORM_HINTS.map(({ platform, color }) => (
+          {PLATFORM_HINTS.map(({ platform }) => (
             <span key={platform} className="flex items-center gap-1.5 font-mono-custom text-[11px] text-muted bg-surface2 border border-border rounded-full px-3 py-1">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: platformColor(platform) }} />
               {platformDisplayName(platform)}
             </span>
           ))}

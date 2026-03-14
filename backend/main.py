@@ -222,6 +222,11 @@ async def focus_window():
     Bypasses focus-stealing prevention to trigger Spotify SDK visibility.
     """
     print("[Backend] Aggressive Ghost Hand: Targeting browser tab...")
+    
+    if os.name != 'nt':
+        print("[Backend] Non-Windows OS detected. Skipping PowerShell Ghost Hand.")
+        return "NotAvailable"
+
     import subprocess
     
     # PowerShell with embedded C# for Win32 focus
@@ -258,6 +263,11 @@ async def minimize_window():
     """The 'Stealth Mode': Minimizes the UNIFY tab back to the taskbar after SDK wake-up.
     """
     print("[Backend] Stealth Mode: Re-minimizing browser...")
+    
+    if os.name != 'nt':
+        print("[Backend] Non-Windows OS detected. Skipping PowerShell Minimize.")
+        return "NotAvailable"
+
     import subprocess
     ps_script = (
         "$code = @'\n"

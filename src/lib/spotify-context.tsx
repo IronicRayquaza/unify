@@ -1,11 +1,12 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import { supabase } from './supabase'
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
 const REDIRECT_URI = typeof window !== 'undefined'
     ? `${window.location.origin}/callback`
-    : 'http://localhost:3000/callback'
+    : 'https://unify-phi.vercel.app/callback'
 
 const SCOPES = [
     'streaming',
@@ -189,6 +190,15 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
         }
     }, [refreshAccessToken, validateConnection])
 
+    const saveTokens = useCallback((data: { accessToken: string, refreshToken?: string, expiresIn?: number }) => {
+        localStorage.setItem('spotify_access_token', data.accessToken)
+        if (data.refreshToken) localStorage.setItem('spotify_refresh_token', data.refreshToken)
+        if (data.expiresIn) localStorage.setItem('spotify_token_expiry', String(Date.now() + (data.expiresIn * 1000)))
+        setToken(data.accessToken)
+        setIsConnected(true)
+        window.location.reload()
+    }, [])
+
     const login = async () => {
         if (!CLIENT_ID) {
             alert('Spotify Client ID is missing. Please set NEXT_PUBLIC_SPOTIFY_CLIENT_ID.')
@@ -197,19 +207,73 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
 
         const verifier = generateRandomString(128);
         const challenge = await generateCodeChallenge(verifier);
+        
+        // Unique key for this auth session — used to retrieve tokens from Supabase
+        const sessionKey = generateRandomString(32)
 
         localStorage.setItem('spotify_code_verifier', verifier);
+        localStorage.setItem('spotify_auth_session_key', sessionKey)
 
-        const params = new URLSearchParams({
-            client_id: CLIENT_ID,
-            response_type: 'code',
-            redirect_uri: REDIRECT_URI,
-            scope: SCOPES.join(' '),
-            code_challenge_method: 'S256',
-            code_challenge: challenge,
-        });
+        // Embed BOTH verifier and sessionKey in state
+        const state = btoa(JSON.stringify({ verifier, key: sessionKey }))
 
-        window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
+        const authUrl = new URL('https://accounts.spotify.com/authorize')
+        authUrl.searchParams.set('client_id', CLIENT_ID)
+        authUrl.searchParams.set('response_type', 'code')
+        authUrl.searchParams.set('redirect_uri', REDIRECT_URI)
+        authUrl.searchParams.set('code_challenge_method', 'S256')
+        authUrl.searchParams.set('code_challenge', challenge)
+        authUrl.searchParams.set('scope', SCOPES.join(' '))
+        authUrl.searchParams.set('state', state)
+
+        const width = 450, height = 730
+        const left = (window.screen.width / 2) - (width / 2)
+        const top = (window.screen.height / 2) - (height / 2)
+        window.open(authUrl.toString(), 'Spotify Login', `width=${width},height=${height},top=${top},left=${left}`)
+
+        // Listen via postMessage (works when popup has opener)
+        const handleMessage = (event: MessageEvent) => {
+            if (event.data?.type !== 'spotify-auth') return
+            if (!event.data.accessToken) return
+            saveTokens(event.data)
+            window.removeEventListener('message', handleMessage)
+        }
+        window.addEventListener('message', handleMessage)
+
+        // Poll Supabase for tokens (fallback when popup has no opener — e.g. Electron external browser)
+        const pollInterval = setInterval(async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('spotify_auth_sessions')
+                    .select('*')
+                    .eq('session_key', sessionKey)
+                    .single()
+
+                if (data?.access_token) {
+                    saveTokens({
+                        accessToken: data.access_token,
+                        refreshToken: data.refresh_token,
+                        expiresIn: data.expires_in,
+                    })
+                    // Clean up the session record
+                    await supabase
+                        .from('spotify_auth_sessions')
+                        .delete()
+                        .eq('session_key', sessionKey)
+                    
+                    clearInterval(pollInterval)
+                    window.removeEventListener('message', handleMessage)
+                }
+            } catch (err) {
+                console.error('Polling error:', err)
+            }
+        }, 1500)
+
+        // Stop polling after 5 minutes
+        setTimeout(() => {
+            clearInterval(pollInterval)
+            window.removeEventListener('message', handleMessage)
+        }, 300000)
     }
 
     return (

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -370,7 +371,7 @@ export default function LandingPage() {
                 Streaming
               </h2>
               <p className="text-muted text-lg lg:text-xl leading-relaxed italic border-l-4 border-accent pl-6 py-2">
-                "All your media, in one elegant feed."
+                &quot;All your media, in one elegant feed.&quot;
               </p>
               <p className="text-muted text-lg leading-relaxed">
                 Stream songs from Spotify, YouTube, YouTube Music, SoundCloud
@@ -392,7 +393,7 @@ export default function LandingPage() {
                 Portability
               </h2>
               <p className="text-muted text-lg lg:text-xl leading-relaxed italic border-l-4 border-accent2 pl-6 py-2">
-                "Your playlists, across any platform."
+                &quot;Your playlists, across any platform.&quot;
               </p>
               <p className="text-muted text-lg leading-relaxed">
                 You can import or export any existing playlist here on Unify.
@@ -444,10 +445,13 @@ export default function LandingPage() {
             <div className="lg:col-span-6 order-1 lg:order-2 relative group flex items-center justify-center">
               <div className="absolute -inset-10 bg-accent2/20 blur-[120px] opacity-20 group-hover:opacity-40 transition-opacity rounded-full"></div>
               <div className="relative w-full h-[450px] lg:h-[500px] flex items-center justify-center group-hover:scale-[1.05] transition-transform duration-700">
-                <img
+                <Image
                   className="w-full h-full object-contain opacity-90 drop-shadow-[0_0_30px_rgba(255,107,53,0.3)]"
                   alt="Playlist Portability Visual"
                   src="/image.png"
+                  width={600}
+                  height={500}
+                  priority
                 />
               </div>
             </div>
@@ -539,12 +543,12 @@ export default function LandingPage() {
                 Migration
               </h2>
               <p className="text-muted text-lg lg:text-xl leading-relaxed italic border-l-4 border-indigo-500 pl-6 py-2">
-                "Switch platforms in a single click."
+                &quot;Switch platforms in a single click.&quot;
               </p>
               <p className="text-muted text-lg leading-relaxed">
                 Our Migrate feature lets you move any Spotify playlist you have
                 to an alternate platform—finding the exact same songs so that
-                you don't have to face ads and limits.
+                you don&apos;t have to face ads and limits.
               </p>
             </div>
           </section>
@@ -569,7 +573,7 @@ export default function LandingPage() {
                   Keyboard First
                 </h3>
                 <p className="text-muted text-sm italic border-l-2 border-accent pl-4 mb-6">
-                  "Speed of thought control."
+                  &quot;Speed of thought control.&quot;
                 </p>
                 <p className="text-muted text-base leading-relaxed">
                   No need to open a tab for anything. Operate entirely with your
@@ -602,7 +606,7 @@ export default function LandingPage() {
                   Always On Top
                 </h3>
                 <p className="text-muted text-sm italic border-l-2 border-accent2 pl-4 mb-6">
-                  "Your media, always in view."
+                  &quot;Your media, always in view.&quot;
                 </p>
                 <p className="text-muted text-base leading-relaxed">
                   A lightweight, semi-transparent overlay that keeps your video
@@ -635,7 +639,7 @@ export default function LandingPage() {
                   Low Resource
                 </h3>
                 <p className="text-muted text-sm italic border-l-2 border-indigo-400 pl-4 mb-6">
-                  "Blazing fast, zero bloat."
+                  &quot;Blazing fast, zero bloat.&quot;
                 </p>
                 <p className="text-muted text-base leading-relaxed">
                   Engineered in Rust for minimum CPU impact. Unify consumes 70%

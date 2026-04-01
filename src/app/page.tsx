@@ -703,8 +703,8 @@ export default function LandingPage() {
                                <div className="space-y-0.5 leading-tight flex-1">
                                   <div><span className="text-[#c586c0]">export default</span> <span className="text-[#569cd6]">function</span> <span className="text-[#dcdcaa]">Home</span>() {'{'}</div>
                                   <div className="pl-2"><span className="text-[#c586c0]">return</span> (</div>
-                                  <div className="pl-4 text-[#808080]">// Unify Landing Page</div>
-                                  <div className="pl-4"><span className="text-[#569cd6]">&lt;</span><span className="text-[#4ec9b0]">main</span> <span className="text-[#9cdcfe]">className</span>=<span className="text-[#ce9178]">"flex"</span><span className="text-[#569cd6]">&gt;</span></div>
+                                  <div className="pl-4 text-[#808080]">{"// Unify Landing Page"}</div>
+                                  <div className="pl-4"><span className="text-[#569cd6]">&lt;</span><span className="text-[#4ec9b0]">main</span> <span className="text-[#9cdcfe]">className</span>=<span className="text-[#ce9178]">&quot;flex&quot;</span><span className="text-[#569cd6]">&gt;</span></div>
                                   <div className="pl-6"><span className="text-[#569cd6]">&lt;</span><span className="text-[#4ec9b0]">HeroSection</span> <span className="text-[#569cd6]">/&gt;</span></div>
                                   <div className="pl-4"><span className="text-[#569cd6]">&lt;/</span><span className="text-[#4ec9b0]">main</span><span className="text-[#569cd6]">&gt;</span></div>
                                </div>
@@ -737,7 +737,7 @@ export default function LandingPage() {
                                  <span className="text-black text-[4px] font-bold">W</span>
                               </div>
                               <div className="flex flex-col">
-                                 <span className="text-[4px] text-white whitespace-nowrap overflow-hidden text-ellipsis w-5">Whatever's Celever!</span>
+                                 <span className="text-[4px] text-white whitespace-nowrap overflow-hidden text-ellipsis w-5">Whatever&apos;s Celever!</span>
                                  <span className="text-[3px]">Playlist</span>
                               </div>
                            </div>
@@ -790,7 +790,7 @@ export default function LandingPage() {
                        </div>
                        {/* Channels list */}
                        <div className="w-14 bg-[#2b2d31] p-1.5 flex flex-col shrink-0 border-l border-[#1e1f22]">
-                           <span className="text-[4px] font-bold text-white shadow-sm mb-1 px-1">Demon's Paradise</span>
+                           <span className="text-[4px] font-bold text-white shadow-sm mb-1 px-1">Demon&apos;s Paradise</span>
                            <div className="w-full h-px bg-[#1e1f22] mb-1" />
                            <div className="flex flex-col gap-0.5">
                                <span className="text-[#80848e] uppercase text-[3px] font-bold mt-1 mb-0.5 px-0.5">Text Channels</span>

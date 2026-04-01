@@ -892,94 +892,92 @@ export default function LandingPage() {
                   &quot;Blazing fast, zero bloat.&quot;
                 </p>
                 <p className="text-muted text-base leading-relaxed">
-                  Optimized for minimum CPU impact. Unify consumes 70%
-                  less RAM than a standard browser tab.
+                           less RAM than a standard browser tab.
                 </p>
               </div>
 
-              {/* "Low Resource" Illustration */}
-              <div className="mt-2 relative h-48 -mx-8 -mb-4 flex items-center justify-center pointer-events-none z-0">
-                 {/* Removed radial gradient for cleaner look */}
-                 
-                  <div className="relative w-full h-full flex items-center justify-center scale-85 md:scale-90 origin-center -translate-y-4">
-                     {/* CPU Wave Graph (Top Layer) */}
-                     <div className="absolute -top-6 left-0 right-0 h-16 md:h-20 opacity-30 z-0">
-                        <svg preserveAspectRatio="none" viewBox="0 0 100 20" className="w-full h-full stroke-indigo-500/40 fill-none stroke-[0.5]">
-                           <path d="M0 10 Q 5 5, 10 10 T 20 10 T 30 15 T 40 5 T 50 12 T 60 8 T 70 15 T 80 5 T 90 10 T 100 8" className="animate-[shimmer_3s_linear_infinite]" />
-                           <path d="M0 12 Q 5 8, 10 12 T 20 12 T 30 18 T 40 8 T 50 14 T 60 10 T 70 18 T 80 8 T 90 12 T 100 10" className="animate-[shimmer_4s_linear_infinite_reverse] opacity-50" />
-                        </svg>
-                        <div className="absolute top-0 left-2 text-[5px] text-indigo-400/50 uppercase tracking-widest font-mono-custom">CPU Load - 0.1% Avg</div>
-                     </div>
-
-                     {/* Main Comparison Chart Window */}
-                     <div className="relative z-10 w-56 md:w-64 bg-[#0a0a0c] rounded-xl border border-indigo-500/20 shadow-[0_25px_50px_rgba(0,0,0,0.8)] p-4 flex flex-col gap-4 transform transition-all duration-700">
-                        <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                           <span className="text-[6px] md:text-[7px] font-mono-custom text-white tracking-[0.2em] uppercase">RAM Usage Comparison</span>
-                           <div className="flex gap-1">
-                              <div className="w-1 h-1 rounded-full bg-red-500/50" />
-                              <div className="w-1 h-1 rounded-full bg-indigo-500/50" />
-                           </div>
-                        </div>
-
-                        {/* Bar Chart */}
-                        <div className="space-y-4 py-1">
-                           {/* Row 1: Chrome */}
-                           <div className="space-y-1">
-                              <div className="flex justify-between text-[5px] md:text-[6px] text-white/40 uppercase font-mono-custom">
-                                 <span>Browser Tab (avg)</span>
-                                 <span className="text-red-400">840 MB</span>
-                              </div>
-                              <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                                 <div className="h-full w-[85%] bg-gradient-to-r from-red-500/40 to-red-500 rounded-full group-hover:translate-x-0 -translate-x-[10%] transition-transform duration-1000" />
+               {/* "Low Resource" Illustration */}
+               <div className="mt-2 relative h-48 -mx-8 -mb-4 flex items-center justify-center pointer-events-none z-0">
+                  <div className="relative w-full h-full flex flex-col items-center justify-center scale-90 md:scale-95 origin-center -translate-y-4">
+                     <div className="flex gap-4 md:gap-10 items-center justify-center w-full">
+                        
+                        {/* Comparison Card 1: Standard Browser (Hot Red) */}
+                        <div className="flex flex-col items-center gap-4 w-32 md:w-44 opacity-40 group-hover:opacity-50 transition-all duration-700">
+                           <div className="relative w-16 md:w-28 h-16 md:h-28 flex items-center justify-center">
+                              <svg className="w-full h-full -rotate-90">
+                                 <circle cx="50%" cy="50%" r="42%" fill="transparent" stroke="currentColor" strokeWidth="10" className="text-white/5" />
+                                 <circle cx="50%" cy="50%" r="42%" fill="transparent" stroke="url(#redGradient)" strokeWidth="10" strokeDasharray="264" strokeDashoffset="264" strokeLinecap="round" className="transition-all duration-[2000ms] ease-out group-hover:[stroke-dashoffset:68]" />
+                                 <defs>
+                                    <linearGradient id="redGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                       <stop offset="0%" stopColor="#ff4b2b" />
+                                       <stop offset="100%" stopColor="#ff416c" />
+                                    </linearGradient>
+                                 </defs>
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
+                                 <span className="text-lg md:text-2xl font-display font-black text-white leading-normal">74%</span>
+                                 <span className="text-[5px] md:text-[7px] font-mono-custom text-red-400 font-bold uppercase tracking-normal">Usage</span>
                               </div>
                            </div>
-
-                           {/* Row 2: Spotify Desktop */}
-                           <div className="space-y-1">
-                              <div className="flex justify-between text-[5px] md:text-[6px] text-white/40 uppercase font-mono-custom">
-                                 <span>Spotify Desktop</span>
-                                 <span className="text-yellow-500">320 MB</span>
-                              </div>
-                              <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                                 <div className="h-full w-[45%] bg-gradient-to-r from-yellow-500/40 to-yellow-500 rounded-full group-hover:translate-x-0 -translate-x-[20%] transition-transform duration-1000 delay-100" />
-                              </div>
-                           </div>
-
-                           {/* Row 3: UNIFY */}
-                           <div className="space-y-1 relative">
-                              <div className="flex justify-between text-[6px] md:text-[7px] text-indigo-300 uppercase font-bold font-mono-custom tracking-wider">
-                                 <span className="flex items-center gap-1">
-                                    <div className="w-1 h-1 bg-indigo-400 rounded-full animate-pulse" />
-                                    Unify Widget
-                                 </span>
-                                 <span className="drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]">42 MB</span>
-                              </div>
-                              <div className="h-3 w-full bg-indigo-500/10 rounded-full border border-indigo-500/20 overflow-hidden relative shadow-[0_0_15px_rgba(99,102,241,0.1)]">
-                                 <div className="h-full w-[8%] bg-gradient-to-r from-indigo-500 to-indigo-300 rounded-full group-hover:width-[12%] transition-all duration-1000 shadow-[0_0_10px_rgba(99,102,241,0.5)]" />
-                                 {/* Scanline effect */}
-                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent w-1/2 -translate-x-full group-hover:animate-[shimmer_2s_infinite]" />
+                           <div className="flex flex-col items-center text-center space-y-1.5">
+                              <span className="text-[7px] md:text-[9px] font-display font-medium text-white/40 uppercase tracking-[0.1em]">Other Music Apps</span>
+                              <div className="px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
+                                 <span className="text-[5px] md:text-[9px] text-red-400 font-mono-custom font-bold uppercase">1.2 GB RAM</span>
                               </div>
                            </div>
                         </div>
 
-                        {/* Bottom Stats */}
-                        <div className="grid grid-cols-2 gap-3 mt-1 pt-3 border-t border-white/5">
-                           <div className="bg-white/5 rounded-lg p-2 flex flex-col items-center">
-                              <span className="text-[4px] text-white/30 uppercase tracking-[0.2em] mb-1">Efficiency</span>
-                              <span className="text-[10px] md:text-[12px] font-display font-black text-indigo-400">94.2%</span>
+                        {/* VS Label */}
+                        <div className="relative flex flex-col items-center justify-center -mx-2 z-10">
+                           <div className="h-16 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent hidden md:block" />
+                           <span className="my-2 text-[8px] md:text-[10px] font-display font-black text-white/20 uppercase tracking-normal">VS</span>
+                           <div className="h-16 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent hidden md:block" />
+                        </div>
+
+                        {/* Comparison Card 2: UNIFY (Vivid Neon) */}
+                        <div className="flex flex-col items-center gap-4 w-32 md:w-44 relative group-hover:scale-105 transition-all duration-700">
+                           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-accent/20 blur-3xl rounded-full animate-pulse z-0" />
+                           <div className="relative w-20 md:w-32 h-20 md:h-32 flex items-center justify-center z-10">
+                              <div className="absolute inset-[15%] rounded-full bg-accent/5 blur-lg" />
+                              <svg className="w-full h-full -rotate-90 filter drop-shadow-[0_0_15px_rgba(200,255,0,0.2)]">
+                                 <circle cx="50%" cy="50%" r="42%" fill="transparent" stroke="currentColor" strokeWidth="12" className="text-white/5" />
+                                 <circle cx="50%" cy="50%" r="42%" fill="transparent" stroke="url(#greenGradient2)" strokeWidth="12" strokeDasharray="264" strokeDashoffset="264" strokeLinecap="round" className="transition-all duration-[2500ms] ease-out group-hover:[stroke-dashoffset:242] shadow-inner" />
+                                 <defs>
+                                    <linearGradient id="greenGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                                       <stop offset="0%" stopColor="#c8ff00" />
+                                       <stop offset="100%" stopColor="#8fff00" />
+                                    </linearGradient>
+                                 </defs>
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
+                                 <span className="text-xl md:text-4xl font-display font-black text-accent drop-shadow-[0_0_15px_rgba(200,255,0,0.6)] leading-normal mt-2">8%</span>
+                                 <span className="text-[6px] md:text-[8px] font-mono-custom text-accent/80 font-black uppercase tracking-wide mt-1">Optimal</span>
+                              </div>
                            </div>
-                           <div className="bg-white/5 rounded-lg p-2 flex flex-col items-center">
-                              <span className="text-[4px] text-white/30 uppercase tracking-[0.2em] mb-1">Start Up</span>
-                              <span className="text-[10px] md:text-[12px] font-display font-black text-indigo-400">0.4s</span>
+                           <div className="flex flex-col items-center text-center relative z-10 space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                 <div className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_10px_#c8ff00] animate-pulse" />
+                                 <span className="text-[10px] md:text-[14px] font-display font-black text-white uppercase tracking-[0.2em] drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]">UNIFY ENGINE</span>
+                              </div>
+                              <div className="px-3 py-0.5 rounded-full bg-accent text-bg font-mono-custom font-black text-[6px] md:text-[9px] uppercase tracking-wider shadow-[0_4px_15_rgba(200,255,0,0.3)]">
+                                 42 MB FOOTPRINT
+                              </div>
                            </div>
                         </div>
                      </div>
 
-                     {/* Floating memory nodes */}
-                     <div className="absolute top-10 -right-4 w-12 h-12 border border-indigo-500/10 rounded-full animate-pulse" />
-                     <div className="absolute -bottom-8 left-10 w-16 h-16 border border-indigo-500/10 rounded-full animate-[ping_4s_linear_infinite]" />
+                     {/* Action Text */}
+                     <div className="mt-8 md:mt-12 px-6 py-2 rounded-xl bg-white/[0.03] border border-white/10 backdrop-blur-xl opacity-0 group-hover:opacity-100 transition-all duration-700 delay-300 transform group-hover:translate-y-0 translate-y-4 shadow-2xl">
+                        <div className="flex items-center gap-4 text-[7px] md:text-[11px] font-display font-black text-white/50 tracking-[0.1em] uppercase">
+                           <span>Blazing Fast</span>
+                           <div className="w-1 h-1 rounded-full bg-accent/40" />
+                           <span className="text-accent underline decoration-accent/30 decoration-2 underline-offset-4">Zero Bloat</span>
+                           <div className="w-1 h-1 rounded-full bg-accent/40" />
+                           <span>Universal</span>
+                        </div>
+                     </div>
                   </div>
-              </div>
+               </div>
             </div>
           </div>
         </div>

@@ -901,28 +901,28 @@ export default function LandingPage() {
                   <div className="relative w-full h-full flex flex-col items-center justify-center scale-90 md:scale-95 origin-center -translate-y-4">
                      <div className="flex gap-4 md:gap-10 items-center justify-center w-full">
                         
-                        {/* Comparison Card 1: Standard Browser (Hot Red) */}
-                        <div className="flex flex-col items-center gap-4 w-32 md:w-44 opacity-40 group-hover:opacity-50 transition-all duration-700">
+                        {/* Comparison Card 1: Other Music Apps (Hot Red) */}
+                        <div className="flex flex-col items-center gap-4 w-32 md:w-44 opacity-70 group-hover:opacity-100 transition-all duration-700">
                            <div className="relative w-16 md:w-28 h-16 md:h-28 flex items-center justify-center">
                               <svg className="w-full h-full -rotate-90">
                                  <circle cx="50%" cy="50%" r="42%" fill="transparent" stroke="currentColor" strokeWidth="10" className="text-white/5" />
                                  <circle cx="50%" cy="50%" r="42%" fill="transparent" stroke="url(#redGradient)" strokeWidth="10" strokeDasharray="264" strokeDashoffset="264" strokeLinecap="round" className="transition-all duration-[2000ms] ease-out group-hover:[stroke-dashoffset:68]" />
                                  <defs>
                                     <linearGradient id="redGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                       <stop offset="0%" stopColor="#ff4b2b" />
+                                       <stop offset="0%" stopColor="#ff5f40" />
                                        <stop offset="100%" stopColor="#ff416c" />
                                     </linearGradient>
                                  </defs>
                               </svg>
                               <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
-                                 <span className="text-lg md:text-2xl font-display font-black text-white leading-normal">74%</span>
-                                 <span className="text-[5px] md:text-[7px] font-mono-custom text-red-400 font-bold uppercase tracking-normal">Usage</span>
+                                 <span className="text-lg md:text-3xl font-display font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)] leading-normal">74%</span>
+                                 <span className="text-[5px] md:text-[7px] font-mono-custom text-red-300 font-bold uppercase tracking-normal">Usage</span>
                               </div>
                            </div>
                            <div className="flex flex-col items-center text-center space-y-1.5">
-                              <span className="text-[7px] md:text-[9px] font-display font-medium text-white/40 uppercase tracking-[0.1em]">Other Music Apps</span>
-                              <div className="px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
-                                 <span className="text-[5px] md:text-[9px] text-red-400 font-mono-custom font-bold uppercase">1.2 GB RAM</span>
+                              <span className="text-[7px] md:text-[10px] font-display font-bold text-white/50 uppercase tracking-[0.1em]">Other Music Apps</span>
+                              <div className="px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+                                 <span className="text-[5px] md:text-[10px] text-red-200 font-mono-custom font-black uppercase">1.2 GB RAM</span>
                               </div>
                            </div>
                         </div>
@@ -955,27 +955,17 @@ export default function LandingPage() {
                               </div>
                            </div>
                            <div className="flex flex-col items-center text-center relative z-10 space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                 <div className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_10px_#c8ff00] animate-pulse" />
+                              <div className="flex items-center justify-center">
                                  <span className="text-[10px] md:text-[14px] font-display font-black text-white uppercase tracking-[0.2em] drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]">UNIFY ENGINE</span>
                               </div>
                               <div className="px-3 py-0.5 rounded-full bg-accent text-bg font-mono-custom font-black text-[6px] md:text-[9px] uppercase tracking-wider shadow-[0_4px_15_rgba(200,255,0,0.3)]">
-                                 42 MB FOOTPRINT
+                                 MINIMAL RAM USAGE
                               </div>
                            </div>
                         </div>
                      </div>
 
-                     {/* Action Text */}
-                     <div className="mt-8 md:mt-12 px-6 py-2 rounded-xl bg-white/[0.03] border border-white/10 backdrop-blur-xl opacity-0 group-hover:opacity-100 transition-all duration-700 delay-300 transform group-hover:translate-y-0 translate-y-4 shadow-2xl">
-                        <div className="flex items-center gap-4 text-[7px] md:text-[11px] font-display font-black text-white/50 tracking-[0.1em] uppercase">
-                           <span>Blazing Fast</span>
-                           <div className="w-1 h-1 rounded-full bg-accent/40" />
-                           <span className="text-accent underline decoration-accent/30 decoration-2 underline-offset-4">Zero Bloat</span>
-                           <div className="w-1 h-1 rounded-full bg-accent/40" />
-                           <span>Universal</span>
-                        </div>
-                     </div>
+
                   </div>
                </div>
             </div>

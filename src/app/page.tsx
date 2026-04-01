@@ -653,41 +653,230 @@ export default function LandingPage() {
               
               {/* "Always On Top" Illustration */}
               <div className="mt-8 relative h-40 md:h-48 -mx-8 -mb-10 flex items-center justify-center pointer-events-none z-0">
+                 <div className="relative w-full h-full flex items-center justify-center scale-90 md:scale-95 origin-center mt-4">
                  {/* Removed radial gradient for cleaner look */}
                  
                  {/* Desktop BG / Other windows */}
-                 <div className="absolute top-10 left-4 md:left-2 w-56 md:w-64 h-32 md:h-40 bg-[#16161a] rounded-lg border border-white/5 shadow-2xl transform rotate-[-6deg] group-hover:rotate-[-8deg] transition-transform duration-700 opacity-40">
-                    <div className="w-full h-5 md:h-6 border-b border-white/5 flex items-center px-2 md:px-3 gap-1 md:gap-1.5">
-                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
-                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
-                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
+                 {/* Desktop BG / Other windows */}
+                 {/* Window 1: VS Code (Top Left) */}
+                 <div className="absolute -top-4 -left-6 w-48 md:w-56 h-36 md:h-44 bg-[#1e1e1e] rounded-md border border-[#333] shadow-2xl transform rotate-[-6deg] group-hover:rotate-[-8deg] group-hover:-translate-x-2 group-hover:-translate-y-1 transition-all duration-700 opacity-60 overflow-hidden text-[#cccccc] font-mono-custom text-[4px] md:text-[5px]">
+                    {/* Header */}
+                    <div className="w-full h-4 bg-[#323233] flex items-center px-2 gap-1 border-b border-[#1b1b1b]">
+                       <div className="w-1.5 h-1.5 rounded-full bg-[#ff5f56]" />
+                       <div className="w-1.5 h-1.5 rounded-full bg-[#ffbd2e]" />
+                       <div className="w-1.5 h-1.5 rounded-full bg-[#27c93f]" />
+                       <div className="ml-auto flex gap-1 items-center">
+                          <div className="w-12 h-2 bg-[#1e1e1e] rounded flex items-center justify-center border border-[#333]">
+                              <span className="text-[3px] text-[#858585]">page.tsx - unify</span>
+                          </div>
+                       </div>
                     </div>
-                    <div className="p-3 md:p-4 space-y-1.5 md:space-y-2">
-                       <div className="w-3/4 h-1.5 md:h-2 bg-white/5 rounded" />
-                       <div className="w-1/2 h-1.5 md:h-2 bg-white/5 rounded" />
-                       <div className="w-full h-1.5 md:h-2 bg-white/5 rounded" />
+                    <div className="flex h-full">
+                       {/* Activity Bar */}
+                       <div className="w-6 bg-[#333333] flex flex-col items-center py-2 gap-2 border-r border-[#1e1e1e]">
+                          <div className="w-3 h-3 border border-white/20 rounded-sm opacity-50" />
+                          <div className="w-3 h-3 border border-white/20 rounded-sm opacity-20" />
+                          <div className="w-3 h-3 border border-white/20 rounded-sm opacity-20 mt-auto mb-4" />
+                       </div>
+                       {/* Sidebar */}
+                       <div className="w-12 bg-[#252526] border-r border-[#1e1e1e] p-1.5">
+                          <span className="text-[3px] text-[#858585] uppercase block mb-1">Explorer</span>
+                          <div className="space-y-1">
+                             <div className="flex items-center gap-1"><span className="text-accent2">v</span><span>src</span></div>
+                             <div className="flex items-center gap-1 pl-1 text-[#519aba]">app</div>
+                             <div className="flex items-center gap-1 pl-2 text-[#cccccc] bg-[#37373d] pr-1 rounded-sm">page.tsx</div>
+                             <div className="flex items-center gap-1 pl-2 text-[#cccccc]">layout.tsx</div>
+                          </div>
+                       </div>
+                       {/* Editor */}
+                       <div className="flex-1 bg-[#1e1e1e] flex flex-col">
+                           {/* Tabs */}
+                           <div className="h-5 flex bg-[#252526]">
+                               <div className="px-2 py-1 bg-[#1e1e1e] border-t border-accent2 text-white flex items-center gap-1 min-w-[30%]">page.tsx</div>
+                               <div className="px-2 py-1 text-[#858585] flex items-center gap-1">layout.tsx</div>
+                           </div>
+                           {/* Code Area */}
+                           <div className="flex-1 p-1.5 flex gap-1.5 h-full overflow-hidden">
+                               <div className="text-[#858585] text-right space-y-0.5 select-none opacity-50 w-2">
+                                  <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div>
+                               </div>
+                               <div className="space-y-0.5 leading-tight flex-1">
+                                  <div><span className="text-[#c586c0]">export default</span> <span className="text-[#569cd6]">function</span> <span className="text-[#dcdcaa]">Home</span>() {'{'}</div>
+                                  <div className="pl-2"><span className="text-[#c586c0]">return</span> (</div>
+                                  <div className="pl-4 text-[#808080]">// Unify Landing Page</div>
+                                  <div className="pl-4"><span className="text-[#569cd6]">&lt;</span><span className="text-[#4ec9b0]">main</span> <span className="text-[#9cdcfe]">className</span>=<span className="text-[#ce9178]">"flex"</span><span className="text-[#569cd6]">&gt;</span></div>
+                                  <div className="pl-6"><span className="text-[#569cd6]">&lt;</span><span className="text-[#4ec9b0]">HeroSection</span> <span className="text-[#569cd6]">/&gt;</span></div>
+                                  <div className="pl-4"><span className="text-[#569cd6]">&lt;/</span><span className="text-[#4ec9b0]">main</span><span className="text-[#569cd6]">&gt;</span></div>
+                               </div>
+                           </div>
+                       </div>
                     </div>
                  </div>
 
-                 <div className="absolute top-4 right-2 w-48 md:w-56 h-40 md:h-48 bg-[#111] rounded-lg border border-white/5 shadow-2xl transform rotate-[4deg] group-hover:rotate-[6deg] group-hover:translate-x-2 transition-transform duration-700 opacity-60">
-                    <div className="w-full h-5 md:h-6 border-b border-white/5 flex items-center px-2 md:px-3 gap-1 md:gap-1.5">
-                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
-                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
-                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
+                 {/* Window 2: Spotify (Bottom Left) */}
+                 <div className="absolute top-12 -left-8 w-44 md:w-52 h-28 md:h-32 bg-black rounded-md border border-[#282828] shadow-2xl transform rotate-[3deg] group-hover:rotate-[5deg] group-hover:-translate-x-1 group-hover:translate-y-1 transition-all duration-700 opacity-60 overflow-hidden font-body text-[#b3b3b3] flex flex-col">
+                    {/* Header */}
+                    <div className="h-4 bg-[#121212] flex items-center px-2 gap-1 z-10 w-full relative">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                        <div className="flex gap-1 ml-4 opacity-50">
+                            <div className="w-2.5 h-2.5 rounded-full bg-black flex items-center justify-center border border-white/20"><span className="text-[4px] text-white">{'<'}</span></div>
+                            <div className="w-2.5 h-2.5 rounded-full bg-black flex items-center justify-center border border-white/20"><span className="text-[4px] text-white">{'>'}</span></div>
+                        </div>
+                    </div>
+                    {/* Main area layout */}
+                    <div className="flex flex-1 p-1 gap-1 overflow-hidden">
+                       {/* Sidebar */}
+                       <div className="w-12 bg-[#121212] rounded-md p-1.5 flex flex-col gap-1.5">
+                           <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-white/20 rounded-sm" /><span className="text-[4px] font-bold text-white">Your Library</span></div>
+                           <div className="flex gap-1 mt-1">
+                               <span className="px-1.5 py-0.5 bg-white/10 rounded-full text-[3px] text-white">Playlists</span>
+                           </div>
+                           <div className="flex items-center gap-1 mt-1">
+                              <div className="w-4 h-4 rounded-sm bg-[#1db954] flex items-center justify-center opacity-70">
+                                 <span className="text-black text-[4px] font-bold">W</span>
+                              </div>
+                              <div className="flex flex-col">
+                                 <span className="text-[4px] text-white whitespace-nowrap overflow-hidden text-ellipsis w-5">Whatever's Celever!</span>
+                                 <span className="text-[3px]">Playlist</span>
+                              </div>
+                           </div>
+                       </div>
+                       {/* Main Content */}
+                       <div className="flex-1 bg-[#121212] rounded-md overflow-hidden relative">
+                           {/* Gradient Top */}
+                           <div className="absolute top-0 inset-x-0 h-12 bg-gradient-to-b from-[#7a2c2c] to-[#121212] opacity-40 z-0" />
+                           <div className="relative z-10 p-2 flex flex-col">
+                               <div className="flex gap-2 items-end mb-2">
+                                  <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-black shadow-lg rounded-sm" />
+                                  <div className="flex flex-col pb-0.5">
+                                      <span className="text-[3px] uppercase">Playlist</span>
+                                      <span className="text-[8px] md:text-[10px] text-white font-black leading-none whitespace-nowrap overflow-hidden text-ellipsis w-[4.5rem]">Whatever&#39;s C...</span>
+                                  </div>
+                               </div>
+                               <div className="flex items-center gap-2 border-b border-white/10 pb-1 mb-1">
+                                  <div className="w-4 h-4 rounded-full bg-[#1db954] flex items-center justify-center text-black text-[5px] pl-0.5" style={{ textShadow: "none" }}>▶</div>
+                               </div>
+                               <div className="space-y-1 pl-1">
+                                   <div className="flex items-center text-[4px]">
+                                      <span className="w-2 text-center mr-1">1</span>
+                                      <div className="flex flex-col flex-1"><span className="text-white">Washed Up</span><span>Charlie Puth</span></div>
+                                   </div>
+                               </div>
+                           </div>
+                       </div>
                     </div>
                  </div>
 
-                 {/* The Widget */}
-                 <div className="relative z-10 w-44 md:w-48 h-16 md:h-20 bg-black/80 backdrop-blur-xl rounded-xl border border-accent2/50 shadow-[0_20px_40px_rgba(255,107,53,0.3)] flex items-center p-2.5 md:p-3 gap-2.5 md:gap-3 transform group-hover:scale-110 group-hover:-translate-y-4 transition-all duration-700">
-                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-gradient-to-br from-accent2 to-pink-600 shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)] flex items-center justify-center">
-                       <svg className="w-5 h-5 md:w-6 md:h-6 text-white drop-shadow-md" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                 {/* Window 3: Discord (Right) */}
+                 <div className="absolute -top-6 -right-8 w-48 md:w-56 h-40 md:h-48 bg-[#313338] rounded-md border border-[#1e1f22] shadow-2xl transform rotate-[7deg] group-hover:rotate-[9deg] group-hover:translate-x-2 group-hover:-translate-y-1 transition-all duration-700 opacity-50 flex flex-col overflow-hidden text-[#dbdee1] font-body text-[4px]">
+                    {/* Header */}
+                    <div className="w-full h-3 bg-[#1e1f22] flex justify-end gap-1 items-center px-1 border-b border-[#1e1f22]">
+                       <div className="w-1.5 h-0.5 bg-white/20" />
+                       <div className="w-1.5 h-1.5 border border-white/20" />
+                       <div className="w-1.5 h-1.5 flex items-center justify-center relative"><div className="w-1.5 h-[1px] bg-white/20 rotate-45 absolute" /><div className="w-1.5 h-[1px] bg-white/20 -rotate-45 absolute" /></div>
                     </div>
-                    <div className="flex-1 space-y-1.5 md:space-y-2">
-                       <div className="w-full h-1.5 md:h-2 bg-white/80 rounded-full" />
-                       <div className="w-2/3 h-1 md:h-1.5 bg-white/40 rounded-full" />
+                    {/* Body */}
+                    <div className="flex flex-1 overflow-hidden">
+                       {/* Server Bar */}
+                       <div className="w-6 bg-[#1e1f22] pt-1 flex flex-col items-center gap-1.5 shrink-0">
+                           <div className="w-4 h-4 bg-[#5865f2] rounded-[6px] text-white flex items-center justify-center" />
+                           <div className="w-3 h-0.5 bg-[#313338] rounded-full" />
+                           <div className="w-4 h-4 bg-[#313338] rounded-full hover:rounded-[6px] transition-all flex items-center justify-center border border-white/10" />
+                           <div className="w-4 h-4 bg-[#313338] rounded-full flex items-center justify-center relative">
+                               <div className="absolute -left-1 w-0.5 h-2 bg-white rounded-r-full" />
+                               <span className="text-[3px]">CU</span>
+                           </div>
+                       </div>
+                       {/* Channels list */}
+                       <div className="w-14 bg-[#2b2d31] p-1.5 flex flex-col shrink-0 border-l border-[#1e1f22]">
+                           <span className="text-[4px] font-bold text-white shadow-sm mb-1 px-1">Demon's Paradise</span>
+                           <div className="w-full h-px bg-[#1e1f22] mb-1" />
+                           <div className="flex flex-col gap-0.5">
+                               <span className="text-[#80848e] uppercase text-[3px] font-bold mt-1 mb-0.5 px-0.5">Text Channels</span>
+                               <div className="flex gap-1 items-center bg-[#404249] text-white px-1 py-0.5 rounded-sm"><span className="text-[#80848e] pb-0.5 font-light">#</span>वार्तालाप</div>
+                               <div className="flex gap-1 items-center text-[#949ba4] px-1 py-0.5"><span className="opacity-50 pb-0.5 font-light">#</span>announcements</div>
+                               <div className="flex gap-1 items-center text-[#949ba4] px-1 py-0.5"><span className="opacity-50 pb-0.5 font-light">#</span>rules</div>
+                           </div>
+                       </div>
+                       {/* Chat area */}
+                       <div className="flex-1 bg-[#313338] flex flex-col p-2 min-w-0 border-l border-[#2b2d31]">
+                           {/* Chat header */}
+                           <div className="h-4 border-b border-[#2b2d31] flex items-center gap-1 font-bold text-white pl-1 pb-1 mb-1">
+                              <span className="text-[#80848e] text-[5px] font-light">#</span> वार्तालाप
+                           </div>
+                           {/* Messages */}
+                           <div className="flex-1 overflow-hidden flex flex-col justify-end gap-2 pb-1 pr-1">
+                               <div className="flex gap-1.5 shrink-0">
+                                   <div className="w-4 h-4 rounded-full bg-cyan-600 shrink-0" />
+                                   <div className="flex flex-col">
+                                       <div className="flex items-baseline gap-1">
+                                           <span className="text-[#f2f3f5] font-bold text-[4px] hover:underline cursor-pointer">I HATE JOE</span>
+                                           <span className="text-[3px] text-[#949ba4]">Today at 15:35</span>
+                                       </div>
+                                       <span className="text-[#dbdee1] leading-[1.2]">Good</span>
+                                   </div>
+                               </div>
+                               <div className="flex gap-1.5 shrink-0">
+                                   <div className="w-4 h-4 rounded-full bg-pink-500 shrink-0" />
+                                   <div className="flex flex-col">
+                                       <div className="flex items-baseline gap-1">
+                                           <span className="text-[#f2f3f5] font-bold text-[4px] hover:underline cursor-pointer">Ironic</span>
+                                           <span className="text-[3px] text-[#949ba4]">Today at 15:36</span>
+                                       </div>
+                                       <span className="text-[#dbdee1] leading-[1.2]">Niice</span>
+                                   </div>
+                               </div>
+                           </div>
+                           {/* Input box */}
+                           <div className="w-full h-4 bg-[#383a40] rounded-[3px] mt-1 flex items-center px-1.5 text-[4px] text-[#949ba4] shrink-0">
+                               Message #वार्तालाप
+                           </div>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* The Unify Widget */}
+                 <div className="relative z-10 w-[150px] md:w-[170px] h-[190px] md:h-[220px] bg-[#0a0a0f] rounded-xl border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.8),0_0_20px_rgba(200,255,0,0.05),inset_0_1px_10px_rgba(255,255,255,0.02)] flex flex-col p-3 transform group-hover:scale-[1.03] group-hover:-translate-y-1 transition-all duration-700 overflow-hidden">
+                    {/* Top Bar */}
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 bg-accent rounded-[3px] flex items-center justify-center">
+                                <svg className="w-2.5 h-2.5 text-black" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z" />
+                                </svg>
+                            </div>
+                            <span className="text-[10px] font-display font-bold text-white tracking-widest leading-none">UNIFY</span>
+                        </div>
+                        <span className="text-[6px] text-white/40 font-mono-custom uppercase tracking-[0.2em]">Login</span>
+                    </div>
+
+                    <div className="flex-1 flex flex-col items-center text-center mt-1 relative z-10">
+                        {/* Status tag */}
+                        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#1a1a1a] border border-white/5 mb-4">
+                            <div className="w-1 h-1 bg-accent rounded-full animate-pulse shadow-[0_0_5px_#c8ff00]" />
+                            <span className="text-[5px] font-mono-custom text-white/40 tracking-[0.2em] uppercase leading-none mt-px">Widget Engine V1.0</span>
+                        </div>
+
+                        {/* Heading */}
+                        <h4 className="text-[15px] md:text-[18px] font-display font-black leading-[1.1] tracking-tight text-white mb-2">
+                            All your<br/>music.<br/>
+                            <span className="text-accent drop-shadow-[0_0_8px_rgba(200,255,0,0.3)]">One platform.</span>
+                        </h4>
+
+                        {/* Copy */}
+                        <p className="text-[6px] text-white/50 leading-relaxed font-body max-w-[90%] mb-4">
+                            The ultimate playlist engine for power users, now right on your desktop.
+                        </p>
+
+                        {/* CTA Button */}
+                        <div className="w-full mt-auto py-1.5 bg-accent text-black rounded text-[7px] font-bold tracking-[0.2em] font-mono-custom uppercase relative shadow-[0_0_15px_rgba(200,255,0,0.2)] hover:shadow-[0_0_20px_rgba(200,255,0,0.4)] transition-shadow">
+                            Start for free
+                        </div>
                     </div>
                     {/* Glowing effect underneath */}
-                    <div className="absolute -bottom-6 inset-x-4 h-6 bg-accent2/40 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-accent/5 blur-[30px] rounded-full pointer-events-none -z-10" />
+                 </div>
                  </div>
               </div>
             </div>
@@ -709,62 +898,87 @@ export default function LandingPage() {
               </div>
 
               {/* "Low Resource" Illustration */}
-              <div className="mt-8 relative h-40 md:h-48 -mx-8 -mb-10 flex items-center justify-center pointer-events-none z-0">
+              <div className="mt-2 relative h-48 -mx-8 -mb-4 flex items-center justify-center pointer-events-none z-0">
                  {/* Removed radial gradient for cleaner look */}
                  
-                 <div className="relative flex items-center justify-center transform group-hover:scale-110 transition-transform duration-700">
-                    {/* Circuit traces */}
-                    <div className="absolute inset-0 flex items-center justify-center opacity-30 group-hover:opacity-100 transition-opacity duration-700 delay-150">
-                       <div className="absolute w-[200px] h-[1px] bg-indigo-500/50 rotate-45" />
-                       <div className="absolute w-[200px] h-[1px] bg-indigo-500/50 -rotate-45" />
-                       <div className="w-24 h-24 md:w-32 md:h-32 border border-indigo-500/30 rounded-full animate-[spin_10s_linear_infinite]" />
-                       <div className="absolute w-32 h-32 md:w-40 md:h-40 border border-indigo-500/10 rounded-full animate-[spin_15s_linear_infinite_reverse]" />
-                    </div>
+                  <div className="relative w-full h-full flex items-center justify-center scale-85 md:scale-90 origin-center -translate-y-4">
+                     {/* CPU Wave Graph (Top Layer) */}
+                     <div className="absolute -top-6 left-0 right-0 h-16 md:h-20 opacity-30 z-0">
+                        <svg preserveAspectRatio="none" viewBox="0 0 100 20" className="w-full h-full stroke-indigo-500/40 fill-none stroke-[0.5]">
+                           <path d="M0 10 Q 5 5, 10 10 T 20 10 T 30 15 T 40 5 T 50 12 T 60 8 T 70 15 T 80 5 T 90 10 T 100 8" className="animate-[shimmer_3s_linear_infinite]" />
+                           <path d="M0 12 Q 5 8, 10 12 T 20 12 T 30 18 T 40 8 T 50 14 T 60 10 T 70 18 T 80 8 T 90 12 T 100 10" className="animate-[shimmer_4s_linear_infinite_reverse] opacity-50" />
+                        </svg>
+                        <div className="absolute top-0 left-2 text-[5px] text-indigo-400/50 uppercase tracking-widest font-mono-custom">CPU Load - 0.1% Avg</div>
+                     </div>
 
-                    {/* Central CPU */}
-                    <div className="relative z-10 w-20 h-20 md:w-24 md:h-24 bg-[#0a0a0c] rounded-2xl border border-indigo-500/30 shadow-[0_0_30px_rgba(99,102,241,0.2)] flex items-center justify-center group-hover:shadow-[0_0_50px_rgba(99,102,241,0.4)] group-hover:border-indigo-400/60 transition-all duration-700">
-                       <div className="absolute inset-1 border border-white/5 rounded-xl" />
-                       {/* Inner core */}
-                       <div className="w-8 h-8 md:w-10 md:h-10 bg-indigo-500/10 rounded-lg border border-indigo-400/50 flex items-center justify-center relative shadow-[inset_0_0_15px_rgba(99,102,241,0.5)] group-hover:bg-indigo-500/20 transition-colors">
-                          <div className="w-3 h-3 md:w-4 md:h-4 bg-indigo-400 rounded-sm shadow-[0_0_15px_rgba(99,102,241,0.8)] animate-pulse" />
-                       </div>
-                       
-                       {/* CPU Pins */}
-                       <div className="absolute -top-1 inset-x-3 md:inset-x-4 flex justify-between">
-                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
-                       </div>
-                       <div className="absolute -bottom-1 inset-x-3 md:inset-x-4 flex justify-between">
-                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
-                       </div>
-                       <div className="absolute -left-1 inset-y-3 md:inset-y-4 flex flex-col justify-between">
-                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
-                       </div>
-                       <div className="absolute -right-1 inset-y-3 md:inset-y-4 flex flex-col justify-between">
-                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
-                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
-                       </div>
-                    </div>
-                 </div>
-                 
-                 {/* Low usage minimal graph */}
-                 <div className="absolute bottom-2 flex items-end justify-center gap-1.5 opacity-60 z-20">
-                    <div className="w-1.5 md:w-2 h-3 md:h-4 bg-indigo-500/40 rounded-sm group-hover:h-5 transition-all duration-300 delay-75" />
-                    <div className="w-1.5 md:w-2 h-2 md:h-3 bg-indigo-500/40 rounded-sm group-hover:h-4 transition-all duration-300 delay-100" />
-                    <div className="w-1.5 md:w-2 h-4 md:h-6 bg-indigo-400/60 rounded-sm shadow-[0_0_10px_rgba(99,102,241,0.5)] group-hover:h-8 transition-all duration-300 delay-150" />
-                    <div className="w-1.5 md:w-2 h-2 md:h-3 bg-indigo-500/40 rounded-sm group-hover:h-4 transition-all duration-300 delay-200" />
-                    <div className="w-1.5 md:w-2 h-3 md:h-4 bg-indigo-500/40 rounded-sm group-hover:h-5 transition-all duration-300 delay-300" />
-                 </div>
+                     {/* Main Comparison Chart Window */}
+                     <div className="relative z-10 w-56 md:w-64 bg-[#0a0a0c] rounded-xl border border-indigo-500/20 shadow-[0_25px_50px_rgba(0,0,0,0.8)] p-4 flex flex-col gap-4 transform transition-all duration-700">
+                        <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                           <span className="text-[6px] md:text-[7px] font-mono-custom text-white tracking-[0.2em] uppercase">RAM Usage Comparison</span>
+                           <div className="flex gap-1">
+                              <div className="w-1 h-1 rounded-full bg-red-500/50" />
+                              <div className="w-1 h-1 rounded-full bg-indigo-500/50" />
+                           </div>
+                        </div>
+
+                        {/* Bar Chart */}
+                        <div className="space-y-4 py-1">
+                           {/* Row 1: Chrome */}
+                           <div className="space-y-1">
+                              <div className="flex justify-between text-[5px] md:text-[6px] text-white/40 uppercase font-mono-custom">
+                                 <span>Browser Tab (avg)</span>
+                                 <span className="text-red-400">840 MB</span>
+                              </div>
+                              <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                                 <div className="h-full w-[85%] bg-gradient-to-r from-red-500/40 to-red-500 rounded-full group-hover:translate-x-0 -translate-x-[10%] transition-transform duration-1000" />
+                              </div>
+                           </div>
+
+                           {/* Row 2: Spotify Desktop */}
+                           <div className="space-y-1">
+                              <div className="flex justify-between text-[5px] md:text-[6px] text-white/40 uppercase font-mono-custom">
+                                 <span>Spotify Desktop</span>
+                                 <span className="text-yellow-500">320 MB</span>
+                              </div>
+                              <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                                 <div className="h-full w-[45%] bg-gradient-to-r from-yellow-500/40 to-yellow-500 rounded-full group-hover:translate-x-0 -translate-x-[20%] transition-transform duration-1000 delay-100" />
+                              </div>
+                           </div>
+
+                           {/* Row 3: UNIFY */}
+                           <div className="space-y-1 relative">
+                              <div className="flex justify-between text-[6px] md:text-[7px] text-indigo-300 uppercase font-bold font-mono-custom tracking-wider">
+                                 <span className="flex items-center gap-1">
+                                    <div className="w-1 h-1 bg-indigo-400 rounded-full animate-pulse" />
+                                    Unify Widget
+                                 </span>
+                                 <span className="drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]">42 MB</span>
+                              </div>
+                              <div className="h-3 w-full bg-indigo-500/10 rounded-full border border-indigo-500/20 overflow-hidden relative shadow-[0_0_15px_rgba(99,102,241,0.1)]">
+                                 <div className="h-full w-[8%] bg-gradient-to-r from-indigo-500 to-indigo-300 rounded-full group-hover:width-[12%] transition-all duration-1000 shadow-[0_0_10px_rgba(99,102,241,0.5)]" />
+                                 {/* Scanline effect */}
+                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent w-1/2 -translate-x-full group-hover:animate-[shimmer_2s_infinite]" />
+                              </div>
+                           </div>
+                        </div>
+
+                        {/* Bottom Stats */}
+                        <div className="grid grid-cols-2 gap-3 mt-1 pt-3 border-t border-white/5">
+                           <div className="bg-white/5 rounded-lg p-2 flex flex-col items-center">
+                              <span className="text-[4px] text-white/30 uppercase tracking-[0.2em] mb-1">Efficiency</span>
+                              <span className="text-[10px] md:text-[12px] font-display font-black text-indigo-400">94.2%</span>
+                           </div>
+                           <div className="bg-white/5 rounded-lg p-2 flex flex-col items-center">
+                              <span className="text-[4px] text-white/30 uppercase tracking-[0.2em] mb-1">Start Up</span>
+                              <span className="text-[10px] md:text-[12px] font-display font-black text-indigo-400">0.4s</span>
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Floating memory nodes */}
+                     <div className="absolute top-10 -right-4 w-12 h-12 border border-indigo-500/10 rounded-full animate-pulse" />
+                     <div className="absolute -bottom-8 left-10 w-16 h-16 border border-indigo-500/10 rounded-full animate-[ping_4s_linear_infinite]" />
+                  </div>
               </div>
             </div>
           </div>

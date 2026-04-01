@@ -556,8 +556,8 @@ export default function LandingPage() {
           {/* BENTO GRID SECTION */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left mt-12">
             {/* Keyboard First (Green) */}
-            <div className="md:col-span-1 bg-black/40 backdrop-blur-xl rounded-xl p-8 lg:p-10 border border-white/10 flex flex-col justify-between shadow-xl group border-t border-white/20 transition-all duration-500">
-              <div>
+            <div className="md:col-span-1 bg-black/40 backdrop-blur-xl rounded-xl p-8 lg:p-10 border border-white/10 flex flex-col justify-between shadow-xl group border-t border-white/20 transition-all duration-500 overflow-hidden relative z-0">
+              <div className="relative z-10">
                 <div className="flex gap-2 mb-10">
                   <kbd className="px-3 py-1.5 bg-black/60 rounded border border-white/20 text-accent text-sm font-mono-custom">
                     ⌘
@@ -581,26 +581,63 @@ export default function LandingPage() {
                   shortcut enabled.
                 </p>
               </div>
-              <div className="mt-12 text-accent">
-                <svg
-                  className="w-12 h-12"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-                  />
-                </svg>
+              
+              {/* Keyboard Illustration */}
+              <div className="mt-8 relative h-40 md:h-48 -mx-8 -mb-10 flex items-end justify-center pointer-events-none z-0">
+                {/* Fade out edges */}
+                {/* Removed radial gradient for cleaner look */}
+                           <div className="relative flex flex-col gap-2 p-4 transform rotate-[-5deg] scale-100 group-hover:scale-110 group-hover:rotate-[-2deg] transition-all duration-700 ease-out -mb-4">
+                   {/* Row 1 (Numbers) */}
+                   <div className="flex gap-2 justify-center opacity-30 blur-[1px]">
+                      {['1', '2', '3', '4', '5'].map(k => (
+                        <div key={k} className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom">{k}</div>
+                      ))}
+                   </div>
+                   {/* Row 2 (Q W E R) */}
+                   <div className="flex gap-2 justify-center ml-4 opacity-80">
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom relative shadow-[0_4px_10px_rgba(0,0,0,0.5)]">Q</div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border border-accent/50 shadow-[0_0_15px_rgba(200,255,0,0.3),inset_0_4px_20px_rgba(200,255,0,0.1)] flex items-center justify-center text-accent text-sm font-bold font-mono-custom relative transition-all duration-500 group-hover:shadow-[0_0_30px_rgba(200,255,0,0.5),inset_0_4px_20px_rgba(200,255,0,0.2)] group-hover:bg-[#1a1c10] group-hover:-translate-y-1">
+                        W
+                        <div className="absolute inset-x-2 -bottom-1 h-[2px] bg-accent blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                      </div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">E</div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">R</div>
+                   </div>
+                   {/* Row 3 (A S D F) */}
+                   <div className="flex gap-2 justify-center ml-8 opacity-60 blur-[0.5px]">
+                      {['A', 'S', 'D', 'F'].map(k => (
+                        <div key={k} className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">{k}</div>
+                      ))}
+                   </div>
+                   {/* Row 4 (Shift Z X C) */}
+                   <div className="flex gap-2 justify-center -ml-2">
+                      <div className="w-16 md:w-20 h-10 md:h-12 rounded-xl bg-[#111] border border-accent/50 shadow-[0_0_15px_rgba(200,255,0,0.3),inset_0_4px_20px_rgba(200,255,0,0.1)] flex items-center justify-center text-accent text-xs font-bold font-mono-custom relative transition-all duration-500 group-hover:shadow-[0_0_30px_rgba(200,255,0,0.5),inset_0_4px_20px_rgba(200,255,0,0.2)] group-hover:bg-[#1a1c10] group-hover:-translate-y-1">
+                        SHIFT
+                        <div className="absolute inset-x-3 -bottom-1 h-[2px] bg-accent blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                      </div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">Z</div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">X</div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">C</div>
+                   </div>
+                   {/* Row 5 (Ctrl Win Alt) */}
+                   <div className="flex gap-2 justify-center -ml-8 opacity-90 relative z-10">
+                      <div className="w-14 md:w-16 h-10 md:h-12 rounded-xl bg-[#111] border border-accent/50 shadow-[0_0_15px_rgba(200,255,0,0.3),inset_0_4px_20px_rgba(200,255,0,0.1)] flex items-center justify-center text-accent text-xs font-bold font-mono-custom relative transition-all duration-500 group-hover:shadow-[0_0_30px_rgba(200,255,0,0.5),inset_0_4px_20px_rgba(200,255,0,0.2)] group-hover:bg-[#1a1c10] group-hover:-translate-y-1">
+                        CTRL
+                        <div className="absolute inset-x-3 -bottom-1 h-[2px] bg-accent blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                      </div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">
+                        <svg className="w-3.5 h-3.5 md:w-4 md:h-4 opacity-50" fill="currentColor" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.801"/></svg>
+                      </div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">ALT</div>
+                      <div className="w-16 md:w-20 h-10 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 shadow-[0_4px_10px_rgba(0,0,0,0.5)]"></div>
+                   </div>
+                </div>
               </div>
             </div>
 
             {/* Always On Top (Pink) */}
-            <div className="md:col-span-1 bg-black/40 backdrop-blur-xl rounded-xl p-8 lg:p-10 border border-white/10 flex flex-col justify-between overflow-hidden relative shadow-xl group border-t border-white/20">
-              <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-transparent pointer-events-none transition-opacity group-hover:opacity-100 opacity-50" />
+            <div className="md:col-span-1 bg-black/40 backdrop-blur-xl rounded-xl p-8 lg:p-10 border border-white/10 flex flex-col justify-between overflow-hidden relative shadow-xl group border-t border-white/20 z-0">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#ff6b35]/5 to-transparent pointer-events-none transition-opacity group-hover:opacity-100 opacity-50 z-0" />
               <div className="relative z-10">
                 <h3 className="text-3xl font-display font-bold mb-4 text-white">
                   Always On Top
@@ -613,28 +650,52 @@ export default function LandingPage() {
                   content visible while you work.
                 </p>
               </div>
-              <div className="mt-12 relative h-32 flex items-center justify-center">
-                <div className="absolute w-40 h-24 bg-surface/90 rounded-xl border border-accent2/30 shadow-[0_10px_30px_rgba(255,107,53,0.15)] flex items-center justify-center transform group-hover:scale-110 group-hover:-translate-y-2 transition-all duration-500">
-                  <svg
-                    className="w-8 h-8 text-accent2"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 5h14v14H5z"
-                    />
-                  </svg>
-                </div>
+              
+              {/* "Always On Top" Illustration */}
+              <div className="mt-8 relative h-40 md:h-48 -mx-8 -mb-10 flex items-center justify-center pointer-events-none z-0">
+                 {/* Removed radial gradient for cleaner look */}
+                 
+                 {/* Desktop BG / Other windows */}
+                 <div className="absolute top-10 left-4 md:left-2 w-56 md:w-64 h-32 md:h-40 bg-[#16161a] rounded-lg border border-white/5 shadow-2xl transform rotate-[-6deg] group-hover:rotate-[-8deg] transition-transform duration-700 opacity-40">
+                    <div className="w-full h-5 md:h-6 border-b border-white/5 flex items-center px-2 md:px-3 gap-1 md:gap-1.5">
+                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
+                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
+                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
+                    </div>
+                    <div className="p-3 md:p-4 space-y-1.5 md:space-y-2">
+                       <div className="w-3/4 h-1.5 md:h-2 bg-white/5 rounded" />
+                       <div className="w-1/2 h-1.5 md:h-2 bg-white/5 rounded" />
+                       <div className="w-full h-1.5 md:h-2 bg-white/5 rounded" />
+                    </div>
+                 </div>
+
+                 <div className="absolute top-4 right-2 w-48 md:w-56 h-40 md:h-48 bg-[#111] rounded-lg border border-white/5 shadow-2xl transform rotate-[4deg] group-hover:rotate-[6deg] group-hover:translate-x-2 transition-transform duration-700 opacity-60">
+                    <div className="w-full h-5 md:h-6 border-b border-white/5 flex items-center px-2 md:px-3 gap-1 md:gap-1.5">
+                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
+                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
+                       <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white/10" />
+                    </div>
+                 </div>
+
+                 {/* The Widget */}
+                 <div className="relative z-10 w-44 md:w-48 h-16 md:h-20 bg-black/80 backdrop-blur-xl rounded-xl border border-accent2/50 shadow-[0_20px_40px_rgba(255,107,53,0.3)] flex items-center p-2.5 md:p-3 gap-2.5 md:gap-3 transform group-hover:scale-110 group-hover:-translate-y-4 transition-all duration-700">
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-gradient-to-br from-accent2 to-pink-600 shadow-[inset_0_2px_10px_rgba(255,255,255,0.2)] flex items-center justify-center">
+                       <svg className="w-5 h-5 md:w-6 md:h-6 text-white drop-shadow-md" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <div className="flex-1 space-y-1.5 md:space-y-2">
+                       <div className="w-full h-1.5 md:h-2 bg-white/80 rounded-full" />
+                       <div className="w-2/3 h-1 md:h-1.5 bg-white/40 rounded-full" />
+                    </div>
+                    {/* Glowing effect underneath */}
+                    <div className="absolute -bottom-6 inset-x-4 h-6 bg-accent2/40 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                 </div>
               </div>
             </div>
 
             {/* Low Resource (Purple/Indigo) */}
-            <div className="md:col-span-1 bg-black/40 backdrop-blur-xl rounded-xl p-8 lg:p-10 border border-white/10 flex flex-col justify-between shadow-xl group border-t border-white/20 transition-all duration-500">
-              <div>
+            <div className="md:col-span-1 bg-black/40 backdrop-blur-xl rounded-xl p-8 lg:p-10 border border-white/10 flex flex-col justify-between shadow-xl group border-t border-white/20 transition-all duration-500 overflow-hidden relative z-0">
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent pointer-events-none transition-opacity group-hover:opacity-100 opacity-50 z-0" />
+              <div className="relative z-10">
                 <h3 className="text-3xl font-display font-bold mb-4 text-white">
                   Low Resource
                 </h3>
@@ -642,16 +703,68 @@ export default function LandingPage() {
                   &quot;Blazing fast, zero bloat.&quot;
                 </p>
                 <p className="text-muted text-base leading-relaxed">
-                  Engineered in Rust for minimum CPU impact. Unify consumes 70%
+                  Optimized for minimum CPU impact. Unify consumes 70%
                   less RAM than a standard browser tab.
                 </p>
               </div>
-              <div className="mt-12 flex items-end gap-2 h-16 opacity-80 group-hover:opacity-100 transition-opacity">
-                <div className="w-full bg-indigo-500/20 h-[30%] rounded-t-sm transition-all duration-500 group-hover:h-[40%]"></div>
-                <div className="w-full bg-indigo-500/20 h-[45%] rounded-t-sm transition-all duration-500 group-hover:h-[55%]"></div>
-                <div className="w-full bg-indigo-500/20 h-[20%] rounded-t-sm transition-all duration-500 group-hover:h-[30%]"></div>
-                <div className="w-full bg-indigo-400 h-[15%] rounded-t-sm shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-500 group-hover:h-[25%]"></div>
-                <div className="w-full bg-indigo-400 h-[10%] rounded-t-sm shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-500 group-hover:h-[20%]"></div>
+
+              {/* "Low Resource" Illustration */}
+              <div className="mt-8 relative h-40 md:h-48 -mx-8 -mb-10 flex items-center justify-center pointer-events-none z-0">
+                 {/* Removed radial gradient for cleaner look */}
+                 
+                 <div className="relative flex items-center justify-center transform group-hover:scale-110 transition-transform duration-700">
+                    {/* Circuit traces */}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-30 group-hover:opacity-100 transition-opacity duration-700 delay-150">
+                       <div className="absolute w-[200px] h-[1px] bg-indigo-500/50 rotate-45" />
+                       <div className="absolute w-[200px] h-[1px] bg-indigo-500/50 -rotate-45" />
+                       <div className="w-24 h-24 md:w-32 md:h-32 border border-indigo-500/30 rounded-full animate-[spin_10s_linear_infinite]" />
+                       <div className="absolute w-32 h-32 md:w-40 md:h-40 border border-indigo-500/10 rounded-full animate-[spin_15s_linear_infinite_reverse]" />
+                    </div>
+
+                    {/* Central CPU */}
+                    <div className="relative z-10 w-20 h-20 md:w-24 md:h-24 bg-[#0a0a0c] rounded-2xl border border-indigo-500/30 shadow-[0_0_30px_rgba(99,102,241,0.2)] flex items-center justify-center group-hover:shadow-[0_0_50px_rgba(99,102,241,0.4)] group-hover:border-indigo-400/60 transition-all duration-700">
+                       <div className="absolute inset-1 border border-white/5 rounded-xl" />
+                       {/* Inner core */}
+                       <div className="w-8 h-8 md:w-10 md:h-10 bg-indigo-500/10 rounded-lg border border-indigo-400/50 flex items-center justify-center relative shadow-[inset_0_0_15px_rgba(99,102,241,0.5)] group-hover:bg-indigo-500/20 transition-colors">
+                          <div className="w-3 h-3 md:w-4 md:h-4 bg-indigo-400 rounded-sm shadow-[0_0_15px_rgba(99,102,241,0.8)] animate-pulse" />
+                       </div>
+                       
+                       {/* CPU Pins */}
+                       <div className="absolute -top-1 inset-x-3 md:inset-x-4 flex justify-between">
+                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
+                       </div>
+                       <div className="absolute -bottom-1 inset-x-3 md:inset-x-4 flex justify-between">
+                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="w-1 h-2 bg-indigo-500/50 rounded-sm" />
+                       </div>
+                       <div className="absolute -left-1 inset-y-3 md:inset-y-4 flex flex-col justify-between">
+                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
+                       </div>
+                       <div className="absolute -right-1 inset-y-3 md:inset-y-4 flex flex-col justify-between">
+                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
+                          <div className="h-1 w-2 bg-indigo-500/50 rounded-sm" />
+                       </div>
+                    </div>
+                 </div>
+                 
+                 {/* Low usage minimal graph */}
+                 <div className="absolute bottom-2 flex items-end justify-center gap-1.5 opacity-60 z-20">
+                    <div className="w-1.5 md:w-2 h-3 md:h-4 bg-indigo-500/40 rounded-sm group-hover:h-5 transition-all duration-300 delay-75" />
+                    <div className="w-1.5 md:w-2 h-2 md:h-3 bg-indigo-500/40 rounded-sm group-hover:h-4 transition-all duration-300 delay-100" />
+                    <div className="w-1.5 md:w-2 h-4 md:h-6 bg-indigo-400/60 rounded-sm shadow-[0_0_10px_rgba(99,102,241,0.5)] group-hover:h-8 transition-all duration-300 delay-150" />
+                    <div className="w-1.5 md:w-2 h-2 md:h-3 bg-indigo-500/40 rounded-sm group-hover:h-4 transition-all duration-300 delay-200" />
+                    <div className="w-1.5 md:w-2 h-3 md:h-4 bg-indigo-500/40 rounded-sm group-hover:h-5 transition-all duration-300 delay-300" />
+                 </div>
               </div>
             </div>
           </div>

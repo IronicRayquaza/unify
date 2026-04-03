@@ -153,11 +153,12 @@ export default function LandingPage() {
                         <div className="w-12 h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 rounded-[1.25rem] bg-black/80 backdrop-blur-xl border border-[#fa243c]/30 shadow-[0_0_30px_rgba(250,36,60,0.2)] flex items-center justify-center transform group-hover/node:-translate-y-2 group-hover/node:shadow-[0_0_40px_rgba(250,36,60,0.4)] transition-all duration-300">
                           <div className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 rounded-full bg-gradient-to-br from-[#fa243c] to-[#fc4e63] flex items-center justify-center shadow-[0_0_15px_rgba(250,36,60,0.5)]">
                             <svg
-                              className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-white"
+                              className="w-5 h-5 md:w-6 md:h-6 lg:w-7 lg:h-7 text-white"
                               fill="currentColor"
                               viewBox="0 0 24 24"
                             >
-                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.32 14.5l-4-2.5v-7h2v5.88l3.05 1.9-1.05 1.72z" />
+                              <path d="M12 0C5.383 0 0 5.383 0 12s5.383 12 12 12 12-5.383 12-12S18.617 0 12 0z" opacity="0.2" />
+                              <path transform="translate(2, 2) scale(0.8, 0.85)" d="M19 3v12.5a3.5 3.5 0 1 1-2-3.13V5.67l-8 1.33v11.5a3.5 3.5 0 1 1-2-3.13V3l12-1.67z" />
                             </svg>
                           </div>
                         </div>
@@ -195,7 +196,7 @@ export default function LandingPage() {
                             viewBox="0 0 24 24"
                             fill="currentColor"
                           >
-                            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm-2 17.5V6.5L16 12l-6 5.5z" />
+                            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
                           </svg>
                         </div>
                         {/* Strong Connecting Line */}
@@ -207,12 +208,8 @@ export default function LandingPage() {
                       <div className="relative group/node cursor-pointer hidden sm:block">
                         <div className="w-12 h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 rounded-[1.25rem] bg-black/80 backdrop-blur-xl border border-[#ff0000]/30 shadow-[0_0_30px_rgba(255,0,0,0.2)] flex items-center justify-center transform group-hover/node:-translate-y-2 group-hover/node:shadow-[0_0_40px_rgba(255,0,0,0.4)] transition-all duration-300">
                           <div className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 rounded-full bg-[#ff0000] flex items-center justify-center shadow-[0_0_15px_rgba(255,0,0,0.5)]">
-                            <svg
-                              className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-white ml-1"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                            >
-                              <path d="M8 5v14l11-7z" />
+                            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12 0C5.389 0 0 5.389 0 12s5.389 12 12 12 12-5.389 12-12S18.611 0 12 0zm0 19.2c-3.978 0-7.2-3.222-7.2-7.2s3.222-7.2 7.2-7.2 7.2 3.222 7.2 7.2-3.222 7.2-7.2 7.2zm0-13.2c-3.315 0-6 2.685-6 6s2.685 6 6 6 6-2.685 6-6-2.685-6-6-6zM10 8.5v7l6-3.5-6-3.5z"/>
                             </svg>
                           </div>
                         </div>
@@ -304,7 +301,8 @@ export default function LandingPage() {
                                 fill="currentColor"
                                 viewBox="0 0 24 24"
                               >
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.32 14.5l-4-2.5v-7h2v5.88l3.05 1.9-1.05 1.72z" />
+                                <path d="M12 0C5.383 0 0 5.383 0 12s5.383 12 12 12 12-5.383 12-12S18.617 0 12 0z" opacity="0.2" />
+                                <path transform="translate(2, 2) scale(0.8, 0.85)" d="M19 3v12.5a3.5 3.5 0 1 1-2-3.13V5.67l-8 1.33v11.5a3.5 3.5 0 1 1-2-3.13V3l12-1.67z" />
                               </svg>
                             </div>
                             <div className="flex-1 min-w-0 flex items-center justify-between">
@@ -491,7 +489,7 @@ export default function LandingPage() {
                 {/* Platform Flow UI */}
                 <div className="relative pt-4">
                   {/* Glowing Connection Beam */}
-                  <div className="absolute top-[2.5rem] left-10 right-10 h-[1.5px] bg-white/5 -translate-y-1/2 rounded-full overflow-hidden">
+                  <div className="absolute top-[3rem] lg:top-[3.5rem] left-10 right-10 h-[1.5px] bg-white/5 -translate-y-1/2 rounded-full overflow-hidden">
                     <div
                       className="h-full w-[80%] bg-gradient-to-r from-indigo-500/0 via-indigo-400 to-indigo-500/0 animate-[shimmer_3s_infinite]"
                       style={{ transition: "width 1s ease-in-out" }}
@@ -525,7 +523,7 @@ export default function LandingPage() {
                     <div className="flex flex-col items-center gap-4">
                       <div className="w-16 h-16 lg:w-20 lg:h-20 bg-black/40 backdrop-blur-xl rounded-2xl border border-[#FF0000]/20 shadow-[0_0_40px_rgba(255,0,0,0.1)] flex items-center justify-center text-[#FF0000] hover:scale-110 hover:shadow-[0_0_50_px_rgba(255,0,0,0.3)] transition-all duration-500 group/yt">
                         <svg className="w-8 h-8 lg:w-10 lg:h-10 drop-shadow-[0_0_15px_rgba(255,0,0,0.5)] z-10" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm-2 17.5V6.5L16 12l-6 5.5z" />
+                          <path d="M12 0C5.389 0 0 5.389 0 12s5.389 12 12 12 12-5.389 12-12S18.611 0 12 0zm0 19.2c-3.978 0-7.2-3.222-7.2-7.2s3.222-7.2 7.2-7.2 7.2 3.222 7.2 7.2-3.222 7.2-7.2 7.2zm0-13.2c-3.315 0-6 2.685-6 6s2.685 6 6 6 6-2.685 6-6-2.685-6-6-6zM10 8.5v7l6-3.5-6-3.5z"/>
                         </svg>
                       </div>
                       <span className="text-[10px] lg:text-[11px] font-mono-custom tracking-[0.2em] text-[#FF0000] font-bold opacity-80">YT MUSIC</span>
@@ -986,19 +984,23 @@ export default function LandingPage() {
         </div>
         <div className="flex items-center gap-6">
           <a
-            href="#"
+            href="https://x.com/Satyam4698"
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-muted hover:text-text transition-colors text-sm font-mono-custom"
           >
             Twitter
           </a>
           <a
-            href="#"
+            href="https://discord.gg/c44vQq5HD7"
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-muted hover:text-text transition-colors text-sm font-mono-custom"
           >
             Discord
           </a>
           <a
-            href="#"
+            href="mailto:satyam4698@gmail.com"
             className="text-muted hover:text-text transition-colors text-sm font-mono-custom"
           >
             Support

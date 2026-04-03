@@ -384,7 +384,7 @@ export default function LandingPage() {
           {/* FEATURE 2: Playlist Portability (Pink/Accent2) */}
           <section className="grid grid-cols-1 lg:grid-cols-11 gap-4 lg:gap-8 items-center mb-48 text-left">
             <div className="lg:col-span-5 order-2 lg:order-1 space-y-6 lg:pl-16">
-              <span className="inline-block px-4 py-1.5 rounded-full bg-accent2/10 border border-accent2/20 text-accent2 font-bold text-xs uppercase tracking-widest font-mono-custom">
+              <span className="inline-block px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent font-bold text-xs uppercase tracking-widest font-mono-custom">
                 Cross-Platform
               </span>
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-display font-black tracking-tighter leading-tight text-white focus:outline-none">
@@ -392,7 +392,7 @@ export default function LandingPage() {
                 <br />
                 Portability
               </h2>
-              <p className="text-muted text-lg lg:text-xl leading-relaxed italic border-l-4 border-accent2 pl-6 py-2">
+              <p className="text-muted text-lg lg:text-xl leading-relaxed italic border-l-4 border-accent pl-6 py-2">
                 &quot;Your playlists, across any platform.&quot;
               </p>
               <p className="text-muted text-lg leading-relaxed">
@@ -402,7 +402,7 @@ export default function LandingPage() {
               </p>
               <div className="flex gap-4 pt-4">
                 <svg
-                  className="w-10 h-10 text-accent2 opacity-80"
+                  className="w-10 h-10 text-accent opacity-80"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -415,7 +415,7 @@ export default function LandingPage() {
                   />
                 </svg>
                 <svg
-                  className="w-10 h-10 text-accent2 opacity-80"
+                  className="w-10 h-10 text-accent opacity-80"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -428,7 +428,7 @@ export default function LandingPage() {
                   />
                 </svg>
                 <svg
-                  className="w-10 h-10 text-accent2 opacity-80"
+                  className="w-10 h-10 text-accent opacity-80"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -443,10 +443,10 @@ export default function LandingPage() {
               </div>
             </div>
             <div className="lg:col-span-6 order-1 lg:order-2 relative group flex items-center justify-center">
-              <div className="absolute -inset-10 bg-accent2/20 blur-[120px] opacity-20 group-hover:opacity-40 transition-opacity rounded-full"></div>
+              <div className="absolute -inset-10 bg-accent/20 blur-[120px] opacity-20 group-hover:opacity-40 transition-opacity rounded-full"></div>
               <div className="relative w-full h-[450px] lg:h-[500px] flex items-center justify-center group-hover:scale-[1.05] transition-transform duration-700">
                 <Image
-                  className="w-full h-full object-contain opacity-90 drop-shadow-[0_0_30px_rgba(255,107,53,0.3)]"
+                  className="w-full h-full object-contain opacity-90 drop-shadow-[0_0_30px_rgba(200,255,0,0.3)]"
                   alt="Playlist Portability Visual"
                   src="/image.png"
                   width={600}
@@ -560,13 +560,13 @@ export default function LandingPage() {
               <div className="relative z-10">
                 <div className="flex gap-2 mb-10">
                   <kbd className="px-3 py-1.5 bg-black/60 rounded border border-white/20 text-accent text-sm font-mono-custom">
-                    ⌘
+                    CTRL
                   </kbd>
                   <kbd className="px-3 py-1.5 bg-black/60 rounded border border-white/20 text-accent text-xs font-mono-custom">
                     SHIFT
                   </kbd>
                   <kbd className="px-3 py-1.5 bg-black/60 rounded border border-white/20 text-accent text-sm font-mono-custom">
-                    W
+                    Z
                   </kbd>
                 </div>
                 <h3 className="text-3xl font-display font-bold mb-4 text-white">
@@ -596,10 +596,7 @@ export default function LandingPage() {
                    {/* Row 2 (Q W E R) */}
                    <div className="flex gap-2 justify-center ml-4 opacity-80">
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom relative shadow-[0_4px_10px_rgba(0,0,0,0.5)]">Q</div>
-                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border border-accent/50 shadow-[0_0_15px_rgba(200,255,0,0.3),inset_0_4px_20px_rgba(200,255,0,0.1)] flex items-center justify-center text-accent text-sm font-bold font-mono-custom relative transition-all duration-500 group-hover:shadow-[0_0_30px_rgba(200,255,0,0.5),inset_0_4px_20px_rgba(200,255,0,0.2)] group-hover:bg-[#1a1c10] group-hover:-translate-y-1">
-                        W
-                        <div className="absolute inset-x-2 -bottom-1 h-[2px] bg-accent blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                      </div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom relative shadow-[0_4px_10px_rgba(0,0,0,0.5)]">W</div>
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">E</div>
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">R</div>
                    </div>
@@ -615,7 +612,10 @@ export default function LandingPage() {
                         SHIFT
                         <div className="absolute inset-x-3 -bottom-1 h-[2px] bg-accent blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                       </div>
-                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">Z</div>
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border border-accent/50 shadow-[0_0_15px_rgba(200,255,0,0.3),inset_0_4px_20px_rgba(200,255,0,0.1)] flex items-center justify-center text-accent text-sm font-bold font-mono-custom relative transition-all duration-500 group-hover:shadow-[0_0_30px_rgba(200,255,0,0.5),inset_0_4px_20px_rgba(200,255,0,0.2)] group-hover:bg-[#1a1c10] group-hover:-translate-y-1">
+                        Z
+                        <div className="absolute inset-x-2 -bottom-1 h-[2px] bg-accent blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                      </div>
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">X</div>
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-[#111] border-b-4 border-b-[#050505] border border-white/10 flex items-center justify-center text-white/30 text-xs font-mono-custom shadow-[0_4px_10px_rgba(0,0,0,0.5)]">C</div>
                    </div>
@@ -901,6 +901,9 @@ export default function LandingPage() {
                   <div className="relative w-full h-full flex flex-col items-center justify-center scale-90 md:scale-95 origin-center -translate-y-4">
                      <div className="flex gap-4 md:gap-10 items-center justify-center w-full">
                         
+                        {/* Decorative Horizontal Line (Left) */}
+                        <div className="absolute left-0 top-[40%] w-12 md:w-20 lg:w-32 h-px bg-gradient-to-r from-transparent via-red-500/20 to-transparent hidden md:block" />
+
                         {/* Comparison Card 1: Other Music Apps (Hot Red) */}
                         <div className="flex flex-col items-center gap-4 w-32 md:w-44 opacity-70 group-hover:opacity-100 transition-all duration-700">
                            <div className="relative w-16 md:w-28 h-16 md:h-28 flex items-center justify-center">
@@ -915,8 +918,8 @@ export default function LandingPage() {
                                  </defs>
                               </svg>
                               <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
-                                 <span className="text-lg md:text-3xl font-display font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)] leading-normal">74%</span>
-                                 <span className="text-[5px] md:text-[7px] font-mono-custom text-red-300 font-bold uppercase tracking-normal">Usage</span>
+                                 <span className="text-lg md:text-3xl font-display font-bold text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)] leading-normal tracking-tighter">74%</span>
+                                 <span className="text-[5px] md:text-[7px] font-mono-custom text-red-300 font-bold uppercase tracking-tighter">Usage</span>
                               </div>
                            </div>
                            <div className="flex flex-col items-center text-center space-y-1.5">
@@ -950,8 +953,8 @@ export default function LandingPage() {
                                  </defs>
                               </svg>
                               <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
-                                 <span className="text-xl md:text-4xl font-display font-black text-accent drop-shadow-[0_0_15px_rgba(200,255,0,0.6)] leading-normal mt-2">8%</span>
-                                 <span className="text-[6px] md:text-[8px] font-mono-custom text-accent/80 font-black uppercase tracking-wide mt-1">Optimal</span>
+                                 <span className="text-xl md:text-4xl font-display font-bold text-accent drop-shadow-[0_0_15px_rgba(200,255,0,0.6)] leading-normal mt-2 tracking-tighter">8%</span>
+                                 <span className="text-[6px] md:text-[8px] font-mono-custom text-accent/80 font-black uppercase tracking-tighter mt-1">Optimal</span>
                               </div>
                            </div>
                            <div className="flex flex-col items-center text-center relative z-10 space-y-1.5">

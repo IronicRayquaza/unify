@@ -2,18 +2,29 @@
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import FAQ from '@/components/FAQ'
 
 export default function DownloadPage() {
   const router = useRouter()
 
   const releases = [
     {
-      platform: 'Desktop',
+      platform: 'Windows',
       version: 'v1.0.4',
-      file: 'Unify-Setup-latest',
+      file: 'Unify-Setup.exe',
       icon: (
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.801" />
+        </svg>
+      )
+    },
+    {
+      platform: 'macOS',
+      version: 'v1.0.4',
+      file: 'Unify-Setup.dmg',
+      icon: (
+        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.05 20.28c-.96.95-2.22 1.48-3.72 1.48-1.5 0-2.65-.45-3.41-.45-.75 0-2.02.48-3.32.48-2.62 0-5.12-1.63-6.42-4.13-1.63-3.13-.15-7.75 2.45-10.45 1.3-1.35 2.85-2.05 4.35-2.05s2.75.63 3.65 1.13c.9-.5 2.35-1.25 4-1.25s3.45.85 4.6 2.3c-3.15 1.75-2.65 6.05.5 7.45-.7 1.5-1.55 3.05-2.7 4.13v.35l.02-.01zm-4.72-15.58c0-2.12 1.72-3.83 3.83-3.83.15 2.12-1.72 4-3.83 3.83z" />
         </svg>
       )
     }
@@ -48,7 +59,7 @@ export default function DownloadPage() {
             Select your platform below to get the latest stable release.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto text-left">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto text-left py-12">
             {releases.map((rel) => (
               <div key={rel.platform} className="p-8 rounded-2xl bg-surface/40 border border-border/50 hover:bg-surface/60 transition-all group backdrop-blur-xl">
                 <div className="flex items-start justify-between mb-8">
@@ -68,7 +79,7 @@ export default function DownloadPage() {
 
                 <button className="w-full py-4 rounded-full bg-white text-bg font-display font-black text-lg hover:scale-[1.02] active:scale-[0.98] transition-all relative overflow-hidden group/btn shadow-xl shadow-white/5">
                   <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-accent to-accent2 transform scale-x-0 group-hover/btn:scale-x-100 transition-transform origin-left duration-500" />
-                  Download
+                  Download for {rel.platform}
                 </button>
               </div>
             ))}
@@ -95,6 +106,7 @@ export default function DownloadPage() {
             Problems? Check our <a href="#" className="text-accent/80 hover:text-accent underline underline-offset-4">Installation Guide</a> or join <a href="#" className="text-accent/80 hover:text-accent underline underline-offset-4">Discord</a>.
           </div>
         </div>
+        <FAQ />
       </main>
 
       <footer className="w-full max-w-7xl mx-auto px-6 py-8 mt-20 border-t border-border/20 flex flex-col md:flex-row items-center justify-between gap-4">

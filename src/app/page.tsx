@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import FAQ from "@/components/FAQ";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -91,7 +92,7 @@ export default function LandingPage() {
             className="group relative px-10 py-5 bg-white text-bg font-display font-bold text-lg rounded-full hover:scale-105 transition-all duration-300"
           >
             <span className="relative z-10 flex items-center gap-2">
-              Download Desktop Setup
+              Download Setup
               <svg
                 className="w-5 h-5 group-hover:translate-x-1 transition-transform"
                 fill="none"
@@ -976,8 +977,10 @@ export default function LandingPage() {
         </div>
       </main>
 
+      <FAQ />
+
       {/* Footer */}
-      <footer className="w-full max-w-7xl mx-auto px-6 py-8 border-t border-border/40 mt-20 flex flex-col md:flex-row items-center justify-between gap-4">
+      <footer className="w-full max-w-7xl mx-auto px-6 py-8 mt-20 border-t border-border/20 flex flex-col md:flex-row items-center justify-between gap-4 relative z-10 transition-all duration-300">
         <div className="text-muted text-sm font-mono-custom">
           © {new Date().getFullYear()} UNIFY — Universal Engine
         </div>

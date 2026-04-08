@@ -12,7 +12,7 @@ export default function DownloadPage() {
       platform: 'Windows',
       version: 'v1.0.4',
       file: 'Unify-Setup.exe',
-      link: 'https://drive.google.com/file/d/1GXRRjP3kVInmoPcYY26GxrrRBOpfy_FI/view?usp=sharing',
+      link: 'https://drive.google.com/file/d/1QxtM0-AzEVqITp6bpaRX-K5AfiqN9Oer/view?usp=sharing',
       icon: (
         <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
           <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.801" />
@@ -23,7 +23,7 @@ export default function DownloadPage() {
       platform: 'macOS',
       version: 'v1.0.4',
       file: 'Unify-Setup.dmg',
-      link: 'https://drive.google.com/file/d/1IpWYzqlgrIMHh55J5jaiknKQJ-Gveuh_/view?usp=sharing',
+      link: 'https://drive.google.com/file/d/1cV6r7UJ1ktDbkVXTzJnPIcIyCHMK7IAd/view?usp=sharing',
       icon: (
         <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
           <path d="M17.05 20.28c-.96.95-2.22 1.48-3.72 1.48-1.5 0-2.65-.45-3.41-.45-.75 0-2.02.48-3.32.48-2.62 0-5.12-1.63-6.42-4.13-1.63-3.13-.15-7.75 2.45-10.45 1.3-1.35 2.85-2.05 4.35-2.05s2.75.63 3.65 1.13c.9-.5 2.35-1.25 4-1.25s3.45.85 4.6 2.3c-3.15 1.75-2.65 6.05.5 7.45-.7 1.5-1.55 3.05-2.7 4.13v.35l.02-.01zm-4.72-15.58c0-2.12 1.72-3.83 3.83-3.83.15 2.12-1.72 4-3.83 3.83z" />

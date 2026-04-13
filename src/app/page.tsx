@@ -84,7 +84,7 @@ export default function LandingPage() {
         </p>
 
         <div
-          className="flex flex-col sm:flex-row items-center gap-4 animate-fadeIn mb-20"
+          className="flex flex-col sm:flex-row items-center gap-6 animate-fadeIn mb-20"
           style={{ animationDelay: "0.4s" }}
         >
           <Link
@@ -109,6 +109,19 @@ export default function LandingPage() {
             </span>
             <div className="absolute inset-0 rounded-full bg-gradient-to-r from-accent to-accent2 blur-xl opacity-30 group-hover:opacity-60 transition-opacity" />
           </Link>
+
+          <a 
+            href="https://peerlist.io/satyam4698/project/unify--all-your-music-one-place" 
+            target="_blank" 
+            rel="noreferrer"
+            className="hover:scale-105 transition-transform duration-300"
+          >
+            <img
+              src="https://peerlist.io/api/v1/projects/embed/PRJHJKNJAJ9JDEKM9FONBD7B9RQAPK?showUpvote=true&theme=dark"
+              alt="UNIFY — All Your Music. One Place."
+              style={{ width: "auto", height: "72px" }}
+            />
+          </a>
         </div>
         </div>
 
